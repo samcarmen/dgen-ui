@@ -1,6 +1,6 @@
 # DGEN
 
-DGEN is a web-based bitcoin wallet interface. You can use it to manage Bitcoin on-chain and Lightning payments through an intuitive web interface.
+DGEN is a web-based bitcoin wallet interface powered by [Breez SDK](https://breez.technology/sdk/) (Nodeless Liquid). You can use it to manage Bitcoin on-chain and Lightning payments through an intuitive web interface.
 
 ## Install
 

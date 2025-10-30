@@ -37,10 +37,8 @@
 
 # Environment variables for different contexts
 [context.deploy-preview]
-  environment = { NODE_ENV = "staging" }
+  environment = { NODE_ENV = "production" }
 
 [context.branch-deploy]
-  environment = { NODE_ENV = "development" }
+  environment = { NODE_ENV = "production" }
 
-# Password protection disabled - plugin not available
-# For password protection, consider using environment variables in your app

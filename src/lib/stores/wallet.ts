@@ -383,9 +383,12 @@ const startEventListening = async (): Promise<void> => {
             console.log('[WalletStore] Payment pending - lockup transaction broadcast');
             walletStore.refresh();
             transactions.refresh();
-            // Notify UI about pending incoming payment
-            if (event.details) {
+            // Only notify if initial sync is complete (prevents showing stale pending payments)
+            const currentState = get(walletStore);
+            if (event.details && currentState.didCompleteInitialSync) {
               notifyPaymentReceived(event.details, 'pending');
+            } else {
+              console.log('[WalletStore] Skipping notification - waiting for initial sync');
             }
             break;
 
@@ -395,8 +398,10 @@ const startEventListening = async (): Promise<void> => {
             console.log('[WalletStore] Payment waiting confirmation - claim tx broadcast');
             walletStore.refresh();
             transactions.refresh();
-            // Show successful payment feedback (as per Breez SDK UX guide)
-            if (event.details) {
+            // Only show notifications and navigate after initial sync is complete
+            const stateConfirmed = get(walletStore);
+            if (event.details && stateConfirmed.didCompleteInitialSync) {
+              // Show successful payment feedback (as per Breez SDK UX guide)
               notifyPaymentReceived(event.details, 'confirmed');
 
               // Navigate to success screen after short delay
@@ -406,6 +411,8 @@ const startEventListening = async (): Promise<void> => {
                   goto('/payment-received');
                 }, 1000); // 1 second delay to let the payment event propagate
               });
+            } else {
+              console.log('[WalletStore] Skipping notification - waiting for initial sync');
             }
             break;
 
@@ -413,9 +420,12 @@ const startEventListening = async (): Promise<void> => {
           case 'paymentSucceeded':
             walletStore.refresh();
             transactions.refresh();
-            // Show payment as complete
-            if (event.details) {
+            // Only notify after initial sync is complete
+            const stateComplete = get(walletStore);
+            if (event.details && stateComplete.didCompleteInitialSync) {
               notifyPaymentReceived(event.details, 'complete');
+            } else {
+              console.log('[WalletStore] Skipping notification - waiting for initial sync');
             }
             break;
 
@@ -430,9 +440,12 @@ const startEventListening = async (): Promise<void> => {
             console.log('[WalletStore] Payment waiting fee acceptance (Bitcoin amountless swap)');
             walletStore.refresh();
             transactions.refresh();
-            // Allow user to review fees
-            if (event.details) {
+            // Only notify after initial sync is complete
+            const stateFee = get(walletStore);
+            if (event.details && stateFee.didCompleteInitialSync) {
               notifyPaymentReceived(event.details, 'fee_acceptance');
+            } else {
+              console.log('[WalletStore] Skipping notification - waiting for initial sync');
             }
             break;
 

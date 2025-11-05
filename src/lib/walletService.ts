@@ -695,9 +695,10 @@ export const formatUsername = (name: string): string => {
     .replace(/[^a-z0-9_-]/g, '');  // Remove invalid chars
 };
 
-export const generateDiscriminator = (): string => {
-  return Math.floor(Math.random() * 10000).toString().padStart(4, '0');
-};
+// No longer needed - using sequential numbers instead
+// export const generateDiscriminator = (): string => {
+//   return Math.floor(Math.random() * 10000).toString().padStart(4, '0');
+// };
 
 // Helper to generate BOLT12 offer for Lightning Address
 const generateLightningAddressOffer = async (username: string): Promise<string> => {
@@ -735,6 +736,10 @@ export const recoverLightningAddress = async (
     const signature = await signMessage(message);
 
     // Try to recover from Breez service using the /recover endpoint
+    // Add 30-second timeout like misty-breez
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 30000);
+
     let response;
     try {
       response = await fetch(`https://breez.fun/lnurlpay/${pubkey}/recover`, {
@@ -744,11 +749,18 @@ export const recoverLightningAddress = async (
           time,
           webhook_url: webhookUrl,
           signature
-        })
+        }),
+        signal: controller.signal
       });
-    } catch (fetchError) {
-      // CORS or network error - treat as "not found"
-      lightningAddressLogger.info('Recovery request failed (likely CORS), will register new address');
+      clearTimeout(timeoutId);
+    } catch (fetchError: any) {
+      clearTimeout(timeoutId);
+      // Timeout, CORS, or network error - treat as "not found"
+      if (fetchError.name === 'AbortError') {
+        lightningAddressLogger.info('Recovery request timed out after 30 seconds, will register new address');
+      } else {
+        lightningAddressLogger.info('Recovery request failed (likely CORS), will register new address');
+      }
       return null;
     }
 
@@ -886,18 +898,33 @@ const registerLightningAddressSingle = async (
     const signature = await signMessage(message);
 
     // 6. Register with Breez LNURL service
+    // Add 30-second timeout like misty-breez
     lightningAddressLogger.info('Registering with Breez LNURL service...');
-    const response = await fetch(`https://breez.fun/lnurlpay/${pubkey}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        time,
-        webhook_url: webhookUrl,
-        username,
-        offer: bolt12Offer,
-        signature
-      })
-    });
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 30000);
+
+    let response;
+    try {
+      response = await fetch(`https://breez.fun/lnurlpay/${pubkey}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          time,
+          webhook_url: webhookUrl,
+          username,
+          offer: bolt12Offer,
+          signature
+        }),
+        signal: controller.signal
+      });
+      clearTimeout(timeoutId);
+    } catch (fetchError: any) {
+      clearTimeout(timeoutId);
+      if (fetchError.name === 'AbortError') {
+        throw new Error('Registration request timed out after 30 seconds');
+      }
+      throw fetchError;
+    }
 
     if (!response.ok) {
       const errorText = await response.text();
@@ -929,15 +956,9 @@ export const registerLightningAddress = async (
   username: string,
   webhookUrl: string,
   offer?: string,
-  maxRetries: number = 3
+  maxRetries: number = 20
 ): Promise<LnAddressRegistrationResult> => {
   if (!sdk) throw new Error('SDK not initialized');
-
-  // Pre-generate alternative usernames with discriminators
-  const alternatives: string[] = [];
-  for (let i = 1; i < maxRetries; i++) {
-    alternatives.push(`${username}${generateDiscriminator()}`);
-  }
 
   const requestedUsername = username;
   let currentUsername = username;
@@ -945,6 +966,11 @@ export const registerLightningAddress = async (
 
   for (let attempt = 0; attempt < maxRetries; attempt++) {
     try {
+      // First attempt: try base username
+      // Second attempt: try username1
+      // Third attempt: try username2, etc.
+      currentUsername = attempt === 0 ? username : `${username}${attempt}`;
+
       lightningAddressLogger.info(`Registration attempt ${attempt + 1}/${maxRetries} with username: ${currentUsername}`);
 
       const result = await registerLightningAddressSingle(currentUsername, webhookUrl, offer);
@@ -958,11 +984,11 @@ export const registerLightningAddress = async (
       };
     } catch (error) {
       if (error instanceof UsernameConflictError && attempt < maxRetries - 1) {
-        lightningAddressLogger.warn(`Username conflict for: ${currentUsername}, trying alternative...`);
-        currentUsername = alternatives[attempt];
+        lightningAddressLogger.warn(`Username conflict for: ${currentUsername}, trying next number...`);
 
-        // Exponential backoff (500ms, 1s, 2s)
-        const backoffMs = 500 * Math.pow(2, attempt);
+        // Progressive backoff to prevent DOS: 100ms, 200ms, 300ms, etc.
+        // After 5 attempts, use longer backoff (500ms)
+        const backoffMs = attempt < 5 ? (attempt + 1) * 100 : 500;
         await new Promise(resolve => setTimeout(resolve, backoffMs));
         continue;
       }

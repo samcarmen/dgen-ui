@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { browser } from '$app/environment';
   import { lnAddressStore, isUpdating } from '$lib/stores/lightningAddress';
   import { updateLightningAddress, formatUsername, type LnAddressRegistrationResult } from '$lib/walletService';
   import { success, fail } from '$lib/utils';
@@ -66,9 +67,9 @@
     lnAddressStore.setUpdateLoading();
 
     try {
-      // Get webhook URL
-      const serverOrigin = PUBLIC_DGEN_URL;
-      const webhookUrl = new URL('/api/v1/notify', serverOrigin);
+      // Get webhook URL - use current origin (HTTPS) and route through backend proxy
+      const currentOrigin = browser ? window.location.origin : PUBLIC_DGEN_URL;
+      const webhookUrl = new URL('/api/backend/api/v1/notify', currentOrigin);
       webhookUrl.searchParams.set('user', userId);
 
       // Format username before update

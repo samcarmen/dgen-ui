@@ -125,8 +125,10 @@
 
       console.log('[Lightning Address] SDK ready, proceeding with auto-registration');
 
-      const serverOrigin = PUBLIC_DGEN_URL;
-      const webhookUrl = new URL('/api/v1/notify', serverOrigin);
+      // Use current origin (HTTPS) and route through backend proxy
+      // This ensures Breez SDK validation passes (requires HTTPS)
+      const currentOrigin = browser ? window.location.origin : PUBLIC_DGEN_URL;
+      const webhookUrl = new URL('/api/backend/api/v1/notify', currentOrigin);
       webhookUrl.searchParams.set('user', user.id);
 
       // Try recovery first - this checks if current seed already has a registered address

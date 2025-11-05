@@ -131,8 +131,9 @@
         return;
       }
 
-      const serverOrigin = PUBLIC_DGEN_URL;
-      const webhookUrl = new URL('/api/v1/notify', serverOrigin);
+      // Use current origin (HTTPS) and route through backend proxy
+      const currentOrigin = browser ? window.location.origin : PUBLIC_DGEN_URL;
+      const webhookUrl = new URL('/api/backend/api/v1/notify', currentOrigin);
       webhookUrl.searchParams.set('user', user.id);
 
       console.log('[Lightning Address] Checking if address is active for this seed...');
@@ -208,8 +209,9 @@
     lnAddressStore.setLoading();
 
     try {
-      const serverOrigin = PUBLIC_DGEN_URL;
-      const webhookUrl = new URL('/api/v1/notify', serverOrigin);
+      // Use current origin (HTTPS) and route through backend proxy
+      const currentOrigin = browser ? window.location.origin : PUBLIC_DGEN_URL;
+      const webhookUrl = new URL('/api/backend/api/v1/notify', currentOrigin);
       webhookUrl.searchParams.set('user', user.id);
 
       // Format username before registration
@@ -291,8 +293,9 @@
 
     try {
       removing = true;
-      const serverOrigin = PUBLIC_DGEN_URL;
-      const webhookUrl = new URL('/api/v1/notify', serverOrigin);
+      // Use current origin (HTTPS) and route through backend proxy
+      const currentOrigin = browser ? window.location.origin : PUBLIC_DGEN_URL;
+      const webhookUrl = new URL('/api/backend/api/v1/notify', currentOrigin);
       webhookUrl.searchParams.set('user', user.id);
 
       await unregisterLightningAddress(webhookUrl.toString());

@@ -422,31 +422,34 @@
     }
   };
 
-  // CHANGED: make swap set html for the new mode immediately and keep DOM in sync
+  // CHANGED: make swap cycle through all three modes: USD -> Sats -> BTC -> USD
   const swap = () => {
     if (fiat) {
-      // going -> sats, BTC, or USDT units
+      // going: fiat -> sats (or USDT for USDT payments)
       fiat = false;
       if (isUSDT) {
         // For USDT, show as decimal (e.g., "1.50" not "150000000")
         html = ((amount || 0) / 100000000).toFixed(8).replace(/\.?0+$/, '');
         if (!html || html === '') html = '0';
-      } else if ($unitPreference === 'btc') {
-        // For BTC mode, show as decimal BTC (e.g., "0.00003824" or "9")
-        const btcValue = (amount || 0) / 100000000;
-        html = btcValue.toString();
-        // Remove unnecessary trailing zeros after decimal
-        if (html.includes('.')) {
-          html = html.replace(/\.?0+$/, '');
-        }
-        if (!html || html === '' || html === '0.') html = '0';
       } else {
-        // For sats mode, show raw satoshis
+        // For Bitcoin, go to sats mode first
+        unitPreference.set('sats');
         html = normalizeSats((amount || 0).toString());
       }
       element && (element.textContent = html);
+    } else if (!isUSDT && $unitPreference === 'sats') {
+      // going: sats -> BTC (only for Bitcoin, not USDT)
+      unitPreference.set('btc');
+      const btcValue = (amount || 0) / 100000000;
+      html = btcValue.toString();
+      // Remove unnecessary trailing zeros after decimal
+      if (html.includes('.')) {
+        html = html.replace(/\.?0+$/, '');
+      }
+      if (!html || html === '' || html === '0.') html = '0';
+      element && (element.textContent = html);
     } else {
-      // going -> fiat
+      // going: BTC (or USDT) -> fiat
       const cents = Math.round((parseFloat(amountFiat || "0") || 0) * 100);
       fiatDigits = Math.max(0, cents).toString();
       fiat = true;
@@ -489,10 +492,24 @@
     arrow,
   ];
 
+  // Track the previous amount to detect external changes
+  let previousAmount = $state(amount);
+
   // Watch for external changes to amount (e.g., from quick amount buttons)
   $effect(() => {
-    if (!element || isUserTyping || isUsingPad) {
-      return; // Don't run when user is typing or using numpad
+    if (!element) {
+      return;
+    }
+
+    // If amount changed externally (not from user typing), clear the typing flags
+    if (amount !== previousAmount && !isUsingPad) {
+      isUserTyping = false;
+    }
+    previousAmount = amount;
+
+    // Don't run when user is actively typing or using numpad
+    if (isUserTyping || isUsingPad) {
+      return;
     }
 
     // If amount is cleared/undefined, reset display to 0
@@ -522,6 +539,10 @@
       fiatDigits = Math.max(0, cents).toString();
       html = formatFiatFromDigits(fiatDigits, decimalChar);
       element.textContent = html;
+
+      // Update amountFiat as well
+      const numericFiat = parseFloat((fiatDigits || "0")) / 100;
+      amountFiat = isFinite(numericFiat) ? numericFiat.toFixed(2) : "0.00";
     } else {
       // In sats/BTC/USDT mode (non-fiat), only update display for external changes
       if (isUSDT) {
@@ -555,6 +576,15 @@
         // For sats mode, show raw satoshis
         html = normalizeSats((amount || 0).toString());
         element.textContent = html;
+      }
+
+      // Update amountFiat for display when not in fiat mode
+      if (isUSDT) {
+        const fval = amount / sats;
+        amountFiat = isFinite(fval) ? fval.toFixed(2) : "0.00";
+      } else {
+        const fval = amount && rate > 0 ? (amount * rate) / sats : 0;
+        amountFiat = fval && isFinite(fval) ? fval.toFixed(2) : "0.00";
       }
     }
     prevHtml = html.toString();
@@ -679,47 +709,72 @@
         {#if fiat && position === "after"}{symbol}{/if}
       </div>
 
-      <!-- swap button - show alternate currency much smaller -->
+      <!-- swap button - show all three currency options with current highlighted -->
       <button
         type="button"
-        class="flex items-center justify-center text-xs sm:text-sm cursor-pointer mx-auto select-none text-white/60 hover:text-white/80 gap-1"
+        class="flex flex-col items-center justify-center cursor-pointer w-full select-none gap-1 group"
         aria-label="Swap currency display"
-        title="Click to swap currency display"
+        title="Click to cycle through currency displays"
         onclick={(e) => {
           e.preventDefault();
           e.stopPropagation();
           swap();
         }}
       >
-        {#if fiat}
-          {#if isUSDT}
+        {#if isUSDT}
+          <!-- For USDT: only show USD ↔ USDT toggle -->
+          <div class="flex items-center justify-center gap-2 text-xs sm:text-sm w-full">
+            <span class={fiat ? "text-white/80 font-semibold" : "text-white/40"}>
+              {f(amountFiat, currency, locale)}
+            </span>
             <iconify-icon
               noobserver
-              icon="cryptocurrency:usdt"
-              class="text-green-400"
-              width="14"
+              icon="ph:arrows-left-right-bold"
+              class="text-white/40 group-hover:text-white/60"
+              width="12"
             ></iconify-icon>
-            <span>{isFinite(amount) ? (amount / 100000000).toFixed(2) : "0.00"} USDT</span>
-          {:else if $unitPreference === 'btc'}
-            <iconify-icon
-              noobserver
-              icon="cryptocurrency:btc"
-              class="text-orange-400"
-              width="14"
-            ></iconify-icon>
-            <span>{isFinite(amount) ? btc(amount) : "0.00000000"} BTC</span>
-          {:else}
-            <iconify-icon
-              noobserver
-              icon="ph:lightning-fill"
-              class="text-yellow-300"
-              width="14"
-            ></iconify-icon>
-            <span>{isFinite(amount) ? s(amount, locale) : "0"} sats</span>
-          {/if}
+            <span class="{!fiat ? 'text-white/80 font-semibold' : 'text-white/40'} flex items-center gap-1">
+              <iconify-icon
+                noobserver
+                icon="cryptocurrency:usdt"
+                class="text-green-400"
+                width="12"
+              ></iconify-icon>
+              {isFinite(amount) ? (amount / 100000000).toFixed(2) : "0.00"} USDT
+            </span>
+          </div>
         {:else}
-          <span>{f(amountFiat, currency, locale)}</span>
+          <!-- For Bitcoin: show USD • Sats • BTC with current highlighted -->
+          <div class="flex items-center justify-center gap-2 text-xs sm:text-sm w-full">
+            <span class={fiat ? "text-white/80 font-semibold" : "text-white/40"}>
+              {f(amountFiat, currency, locale)}
+            </span>
+            <span class="text-white/20">•</span>
+            <span class="{!fiat && $unitPreference === 'sats' ? 'text-white/80 font-semibold' : 'text-white/40'} flex items-center gap-1">
+              <iconify-icon
+                noobserver
+                icon="ph:lightning-fill"
+                class="text-yellow-300"
+                width="12"
+              ></iconify-icon>
+              {isFinite(amount) ? s(amount, locale) : "0"}
+            </span>
+            <span class="text-white/20">•</span>
+            <span class="{!fiat && $unitPreference === 'btc' ? 'text-white/80 font-semibold' : 'text-white/40'} flex items-center gap-1">
+              <iconify-icon
+                noobserver
+                icon="cryptocurrency:btc"
+                class="text-orange-400"
+                width="12"
+              ></iconify-icon>
+              {isFinite(amount) ? btc(amount) : "0.00000000"}
+            </span>
+          </div>
         {/if}
+        <div class="text-[10px] text-white/40 group-hover:text-white/60 transition-colors flex items-center justify-center gap-1 w-full">
+          <iconify-icon noobserver icon="ph:hand-tap-bold" width="10"></iconify-icon>
+          Tap to switch
+        </div>
       </button>
     </div>
 

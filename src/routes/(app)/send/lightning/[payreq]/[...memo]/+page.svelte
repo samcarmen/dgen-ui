@@ -1,9 +1,8 @@
 <script>
   import SendLightning from "$comp/SendLightning.svelte";
-  import { page } from "$app/stores";
-  
-  let payreq = $derived($page.params.payreq);
-  let memo = $derived($page.params.memo);
+
+  let { data } = $props();
+  let { payreq, memo, rate, currency } = $derived(data);
 </script>
 
-<SendLightning {payreq} {memo} />
+<SendLightning {payreq} {memo} {rate} {currency} />

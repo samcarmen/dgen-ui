@@ -5,7 +5,7 @@
   import { t } from "$lib/translations";
   import { fiat as fiatStore, unitPreference } from "$lib/store";
 
-  // ---- Props (Svelte 5 runes) ----
+  // ---- Props ----
   let {
     amount = $bindable(),
     currency = "USD",
@@ -14,22 +14,19 @@
     rate = $bindable(),
     locale,
     submit = undefined,
-    amountFiat = 0,
-    skipBalanceCheck = false,  // Add this prop to skip balance validation
-    isUSDT = false,  // Flag for USDT amounts (1:1 with USD)
+    skipBalanceCheck = false,
+    isUSDT = false,
   } = $props();
 
-  // ---- Local state ----
-  let fiatDigits = $state("0"); // cents buffer in fiat mode
-  let html = $state("0");
-  let isUserTyping = $state(false); // Track if user is actively typing
-  let isUsingPad = $state(false); // Track if user is using number pad
-
-  // currency info as reactive state
+  // ---- Simple state ----
+  let displayValue = $state("0");
+  let amountFiat = $state("0.00"); // Local state for fiat display
   let decimalChar = $state(".");
   let symbol = $state("");
   let position = $state("before");
+  let isUserInput = $state(false); // Flag to prevent effect from overwriting user input
 
+  // Get currency formatting info
   function getCurrencyInfo(locale = "en-US", currency) {
     const formatter = new Intl.NumberFormat(locale, {
       style: "currency",
@@ -48,7 +45,7 @@
     return { symbol: sym, position: pos, decimal };
   }
 
-  // reflect external prop/locale changes
+  // Update currency info when locale/currency changes
   $effect(() => {
     const info = getCurrencyInfo(locale, currency);
     decimalChar = info.decimal;
@@ -56,334 +53,193 @@
     position = info.position;
   });
 
-  function formatFiatFromDigits(digits, dec = ".") {
-    let d = digits.replace(/\D+/g, "");
-    if (!d) d = "0";
-    if (d.length > 15) d = d.slice(0, 15);
-    if (d.length === 1) d = "0" + d;
-    if (d.length === 2) d = "0" + d;
-    const whole = d.slice(0, -2).replace(/^0+(?=\d)/, "") || "0";
-    const cents = d.slice(-2);
-    return `${whole}${dec}${cents}`;
-  }
-
-  // --- NEW: normalize sats to remove leading zeros but keep single "0"
-  function normalizeSats(str) {
-    const digits = (str ?? "").replace(/[^\d]/g, "");
-    const noLead = digits.replace(/^0+(?=\d)/, "");
-    return noLead || "0";
-  }
-
-  const updateByMode = () => {
-    if (fiat) {
-      const numericFiat =
-        parseFloat((fiatDigits || "0").replace(/\D/g, "")) / 100;
-      amountFiat = isFinite(numericFiat) ? numericFiat.toFixed(2) : "0.00";
-
-      // For USDT: $1 USD = 1.0 USDT = 100000000 smallest units (1:1 conversion)
-      // For Bitcoin: Use market exchange rate
-      if (isUSDT) {
-        // Convert USD to USDT smallest units (same precision as satoshis: 10^8)
-        amount = Math.round(numericFiat * sats);
-      } else {
-        // Convert USD to satoshis using Bitcoin exchange rate
-        amount = numericFiat && rate > 0 ? Math.round((numericFiat * sats) / rate) : 0;
-      }
-    } else {
-      // For non-fiat mode, amount is already set by input handlers
-      // Just update the fiat display value
-
-      // For display: convert back to fiat
-      if (isUSDT) {
-        // For USDT: amount is in smallest units, divide by 10^8 to get USDT (same as USD)
-        const fval = amount / sats;
-        amountFiat = isFinite(fval) ? fval.toFixed(2) : "0.00";
-      } else {
-        // For Bitcoin: use exchange rate
-        const fval = amount && rate > 0 ? (amount * rate) / sats : 0;
-        amountFiat = fval && isFinite(fval) ? fval.toFixed(2) : "0.00";
-      }
-    }
-  };
-
-  const pasted = async () => {
-    const txt = (await navigator.clipboard.readText()) ?? "";
-    if (fiat) {
-      const m = txt.replace(/[^\d.,]/g, "");
-      const normalized = m.replace(new RegExp(`[${decimalChar}]`, "g"), ".");
-      const val = parseFloat(normalized);
-      const cents = isFinite(val) ? Math.round(val * 100) : 0;
-      fiatDigits = Math.max(0, cents).toString();
-      html = formatFiatFromDigits(fiatDigits, decimalChar);
-    } else if ($unitPreference === 'btc' && !isUSDT) {
-      // BTC mode - parse as decimal BTC value and display directly
-      const m = txt.replace(/[^\d.,]/g, "");
-      const normalized = m.replace(new RegExp(`[${decimalChar}]`, "g"), ".");
-      const val = parseFloat(normalized);
-      if (isFinite(val) && val >= 0) {
-        html = val.toString();
-        // Clean up display
-        if (html.includes('.')) {
-          html = html.replace(/\.?0+$/, '');
-        }
-        if (html === '') html = '0';
-      } else {
-        html = '0';
-      }
-      element && (element.textContent = html);
-    } else {
-      const clean = normalizeSats(txt);
-      html = clean;
-      element && (element.textContent = html);
-    }
-    input(null, true);
-  };
-
-  let prevHtml = $state("");
-
-  // (kept for completeness; no longer used in sats path)
-  function trimTrailingZeros(str) {
-    if (!str.includes(".")) return str;
-    let out = str.replace(/(\.\d*?[1-9])0+$/, "$1");
-    out = out.replace(/\.0*$/, "");
-    return out;
-  }
-
-  const input = (e, fromPad = false) => {
-    // Set flag when user is typing (not using pad)
-    if (!fromPad) {
-      isUserTyping = true;
-      isUsingPad = false;
-    } else {
-      isUserTyping = false;
-      isUsingPad = true;
-    }
+  // Convert display value to satoshis
+  function displayToSats(display) {
+    const numeric = parseFloat(display.replace(decimalChar, '.')) || 0;
 
     if (fiat) {
-      if (!fromPad) {
-        // When typing manually, allow decimal input temporarily
-        const text = element?.textContent ?? "";
-        // Check if user is in the middle of typing a decimal
-        if (text.includes(decimalChar) || text.includes('.')) {
-          // Allow decimal typing - parse and update amount directly
-          const numericFiat = parseFloat(text.replace(decimalChar, '.')) || 0;
-
-          // Update amount based on payment type
-          if (isUSDT) {
-            amount = Math.round(numericFiat * 100000000);
-          } else {
-            amount = rate > 0 ? Math.round((numericFiat * sats) / rate) : 0;
-          }
-
-          const satsEstimate = isUSDT ? amount : (rate > 0 ? Math.round((numericFiat * sats) / rate) : 0);
-          if (!skipBalanceCheck && satsEstimate > sats) {
-            warning($t("user.receive.lessThan1BTCWarning"));
-          }
-
-          amountFiat = numericFiat.toFixed(2);
-          html = text;
-          prevHtml = html.toString();
-          return; // Don't reformat while user is typing decimal
-        }
-        const raw = text.replace(/[^\d]/g, "");
-        fiatDigits = raw || "0";
-      }
-      const cents = parseInt(fiatDigits || "0") || 0;
-      const numericFiat = cents / 100;
-      const satsEstimate = rate > 0 ? Math.round((numericFiat * sats) / rate) : 0;
-      if (!skipBalanceCheck && satsEstimate > sats && html.length > prevHtml.length) {
-        fiatDigits = fiatDigits.slice(0, -1) || "0";
-        warning($t("user.receive.lessThan1BTCWarning"));
-      }
-      html = formatFiatFromDigits(fiatDigits, decimalChar);
-      if (fromPad) {
-        element && (element.textContent = html);
-      }
-    } else {
+      // Fiat -> Satoshis
       if (isUSDT) {
-        // For USDT in non-fiat mode, allow decimal input (similar to fiat but with USDT units)
-        // When using number pad, amount is already set by handleInput, just sync html
-        if (!fromPad) {
-          // Only parse from element when typing manually
-          const text = element?.textContent ?? "";
-          const usdtAmount = parseFloat(text) || 0;
-          const newAmount = Math.round(usdtAmount * 100000000);
-          amount = newAmount; // Convert to smallest units
-          html = text; // Update html for display tracking
-        }
-        // When fromPad is true, html is already set correctly by handleInput
-      } else if ($unitPreference === 'btc') {
-        // BTC mode with decimal support - work directly with display string
-        if (!fromPad) {
-          // When typing manually, parse and validate
-          const text = element?.textContent ?? "";
-          const numericBTC = parseFloat(text.replace(decimalChar, '.')) || 0;
-          const newAmount = Math.round(numericBTC * 100000000);
-
-          if (!skipBalanceCheck && newAmount > sats && newAmount > amount) {
-            warning($t("user.receive.lessThan1BTCWarning"));
-            // Don't update if exceeds balance
-            return;
-          }
-
-          amount = newAmount;
-          html = text;
-          prevHtml = html.toString();
-          return; // Don't reformat while user is typing
-        }
-        // When using number pad, amount is already set in handleInput
+        return Math.round(numeric * 100000000);
       } else {
-        // Sats mode - integer-only sats, normalize leading zeros
-        let clean = normalizeSats(element?.textContent ?? "");
-        const maybe = parseInt(clean) || 0;
-        if (!skipBalanceCheck && maybe > sats && clean.length > prevHtml.length) {
-          clean = normalizeSats(clean.slice(0, -1));
-          warning($t("user.receive.lessThan1BTCWarning"));
+        return rate > 0 ? Math.round((numeric * sats) / rate) : 0;
+      }
+    } else {
+      // Direct crypto input
+      if (isUSDT || $unitPreference === 'btc') {
+        return Math.round(numeric * 100000000);
+      } else {
+        // Sats mode - already in sats
+        return Math.round(numeric);
+      }
+    }
+  }
+
+  // Convert satoshis to display value
+  function satsToDisplay(sats) {
+    if (fiat) {
+      // Satoshis -> Fiat (round to 2 decimal places to avoid floating point errors)
+      if (isUSDT) {
+        const fiatValue = sats / 100000000;
+        return (Math.round(fiatValue * 100) / 100).toString();
+      } else {
+        const fiatValue = rate > 0 ? (sats * rate) / 100000000 : 0;
+        return (Math.round(fiatValue * 100) / 100).toString();
+      }
+    } else {
+      // Satoshis -> Crypto
+      if (isUSDT || $unitPreference === 'btc') {
+        const val = (sats / 100000000).toString();
+        return val.replace(/\.?0+$/, '') || "0";
+      } else {
+        // Sats mode
+        return sats.toString();
+      }
+    }
+  }
+
+  // Update amount when display changes
+  function updateAmount() {
+    const newAmount = displayToSats(displayValue);
+
+    // Check balance
+    if (!skipBalanceCheck && newAmount > sats) {
+      warning($t("user.receive.lessThan1BTCWarning"));
+      return false;
+    }
+
+    amount = newAmount;
+    lastInternalAmount = newAmount; // Track this as our own update
+
+    // Update fiat display value
+    if (isUSDT) {
+      amountFiat = (amount / 100000000).toFixed(2);
+    } else {
+      amountFiat = rate > 0 ? ((amount * rate) / 100000000).toFixed(2) : "0.00";
+    }
+
+    return true;
+  }
+
+  // Track if amount changed externally
+  let lastInternalAmount = $state(amount);
+
+  // Handle numpad button press
+  function handleInput(value) {
+    isUserInput = true;
+
+    if (value === "clear") {
+      displayValue = "0";
+    } else if (value === "backspace") {
+      displayValue = displayValue.length > 1 ? displayValue.slice(0, -1) : "0";
+    } else if (value === ".") {
+      // Only allow decimal in appropriate modes
+      if ((fiat || isUSDT || $unitPreference === 'btc') && !displayValue.includes(decimalChar)) {
+        displayValue = displayValue + decimalChar;
+      }
+    } else {
+      // Number key
+      if (displayValue === "0") {
+        displayValue = value;
+      } else {
+        // Limit fiat to 2 decimal places
+        if (fiat && displayValue.includes(decimalChar)) {
+          const parts = displayValue.split(decimalChar);
+          if (parts[1] && parts[1].length >= 2) {
+            return; // Don't add more digits after 2 decimal places
+          }
         }
-        amount = parseInt(clean) || 0; // Update amount from the validated input
-        html = clean; // Update html for display tracking
-        // Only update textContent when using number pad, not when typing
-        if (fromPad) {
-          element && (element.textContent = html);
-        }
+        displayValue = displayValue + value;
       }
     }
 
-    // Save display before updateByMode for numpad usage
-    const savedHtml = fromPad && fiat ? html : null;
+    element && (element.textContent = displayValue);
+    updateAmount();
 
-    if (!isUSDT || fiat) {
-      updateByMode();
+    // Clear flag after a short delay
+    setTimeout(() => {
+      isUserInput = false;
+    }, 100);
+  }
+
+  // Handle manual typing
+  function handleManualInput() {
+    isUserInput = true;
+
+    let text = element?.textContent ?? "0";
+
+    // Limit fiat to 2 decimal places
+    if (fiat && text.includes(decimalChar)) {
+      const parts = text.split(decimalChar);
+      if (parts[1] && parts[1].length > 2) {
+        text = parts[0] + decimalChar + parts[1].substring(0, 2);
+        element.textContent = text;
+      }
     }
 
-    // Restore display after updateByMode when using numpad in fiat mode
-    if (savedHtml !== null) {
-      element && (element.textContent = savedHtml);
-    }
+    displayValue = text || "0";
+    updateAmount();
 
-    if (!fromPad) {
-      queueMicrotask(() => {
-        const node = element?.childNodes?.[0];
-        if (!node) return;
-        const range = document.createRange();
-        const sel = getSelection();
-        const L = node.length ?? node.textContent?.length ?? 0;
-        range.setStart(node, L);
-        range.setEnd(node, L);
-        sel.removeAllRanges();
-        sel.addRange(range);
+    // Move cursor to end
+    queueMicrotask(() => {
+      const node = element?.childNodes?.[0];
+      if (!node) return;
+      const range = document.createRange();
+      const sel = getSelection();
+      const L = node.length ?? node.textContent?.length ?? 0;
+      range.setStart(node, L);
+      range.setEnd(node, L);
+      sel.removeAllRanges();
+      sel.addRange(range);
 
-        // Don't clear the typing flag here - it will cause the effect to run
-        // The flag will be cleared on the next keystroke or when using the pad
-      });
-    } else {
-      // Clear typing flag when using number pad, then clear pad flag after a brief delay
-      isUserTyping = false;
+      // Clear flag after cursor is moved
       setTimeout(() => {
-        isUsingPad = false;
+        isUserInput = false;
       }, 100);
-    }
-    prevHtml = html.toString();
-  };
+    });
+  }
 
-  const handleInput = (value) => {
-    if (fiat) {
-      if (value === arrow) {
-        fiatDigits = fiatDigits.length > 1 ? fiatDigits.slice(0, -1) : "0";
-        html = formatFiatFromDigits(fiatDigits, decimalChar);
-      } else if (value === decimal) {
-        // For fiat mode, decimal is ignored since it's always present in the display
-        return;
-      } else {
-        fiatDigits = (fiatDigits === "0" ? "" : fiatDigits) + value;
-        html = formatFiatFromDigits(fiatDigits, decimalChar);
+  // Handle paste
+  async function handlePaste() {
+    isUserInput = true;
+
+    const txt = (await navigator.clipboard.readText()) ?? "";
+    const clean = txt.replace(/[^\d.,]/g, "").replace(new RegExp(`[${decimalChar}]`, "g"), ".");
+    const val = parseFloat(clean);
+    if (isFinite(val) && val >= 0) {
+      displayValue = val.toString();
+
+      // Limit fiat to 2 decimal places
+      if (fiat && displayValue.includes('.')) {
+        const parts = displayValue.split('.');
+        if (parts[1] && parts[1].length > 2) {
+          displayValue = parts[0] + '.' + parts[1].substring(0, 2);
+        }
+      } else if (displayValue.includes('.')) {
+        displayValue = displayValue.replace(/\.?0+$/, '');
       }
-      element && (element.textContent = html);
+
+      if (displayValue === '') displayValue = '0';
     } else {
-      if (isUSDT) {
-        // For USDT, handle decimal input like fiat but show USDT
-        // Use same digit buffer approach
-        if (value === arrow) {
-          fiatDigits = fiatDigits.length > 1 ? fiatDigits.slice(0, -1) : "0";
-        } else if (value === decimal) {
-          // For USDT, decimal is ignored since it's always present in the display
-          return;
-        } else {
-          fiatDigits = (fiatDigits === "0" ? "" : fiatDigits) + value;
-        }
-        html = formatFiatFromDigits(fiatDigits, decimalChar);
-        element && (element.textContent = html);
-        // Convert to smallest units
-        const cents = parseInt(fiatDigits || "0") || 0;
-        const numericUSDT = cents / 100;
-        amount = Math.round(numericUSDT * 100000000);
-      } else if ($unitPreference === 'btc') {
-        // For Bitcoin BTC mode - work with display string directly (like manual typing)
-        if (value === arrow) {
-          html = html.length > 1 ? html.slice(0, -1) : "0";
-        } else if (value === decimal) {
-          // Add decimal point if not already present
-          if (!html.includes(decimalChar)) {
-            html = html + decimalChar;
-          }
-        } else {
-          // If current is "0" and no decimal, replace with the digit; else append
-          if (html === "0") {
-            html = value;
-          } else {
-            html = html + value;
-          }
-        }
-        element && (element.textContent = html);
-        // Parse the BTC value and convert to satoshis
-        const numericBTC = parseFloat(html.replace(decimalChar, '.')) || 0;
-        amount = Math.round(numericBTC * 100000000);
-      } else {
-        // For Bitcoin sats - decimal button is disabled/ignored since sats are integers
-        if (value === arrow) {
-          html = html.length > 1 ? html.slice(0, -1) : "0";
-        } else if (value === decimal) {
-          // For sats mode, decimal is ignored (sats are whole numbers)
-          return;
-        } else {
-          // If current is "0", replace with the digit; else append
-          html = html === "0" ? value : html + value;
-        }
-        // normalize away any accidental leading zeros
-        html = normalizeSats(html);
-        element && (element.textContent = html);
-      }
+      displayValue = '0';
     }
-    input(null, true);
-  };
+    element && (element.textContent = displayValue);
+    updateAmount();
 
-  const select = (e) => {
-    const range = document.createRange();
-    range.selectNodeContents(e.target);
-    const sel = getSelection();
-    sel.removeAllRanges();
-    sel.addRange(range);
-  };
+    setTimeout(() => {
+      isUserInput = false;
+    }, 100);
+  }
 
-  const blur = () => {
-    if (!html) {
-      if (fiat) {
-        html = formatFiatFromDigits("0", decimalChar);
-      } else {
-        html = "0";
-      }
-    }
-  };
-
-  const keydown = (e) => {
-    // Allow Enter key
+  // Keyboard validation
+  function handleKeydown(e) {
     if (e.key === "Enter") {
       e.preventDefault();
       submit?.click?.();
       return;
     }
 
-    // Allow control keys (backspace, delete, arrows, etc.)
+    // Allow control keys
     if (
       e.key === "Backspace" ||
       e.key === "Delete" ||
@@ -392,17 +248,16 @@
       e.key === "Tab" ||
       e.key === "Home" ||
       e.key === "End" ||
-      (e.ctrlKey || e.metaKey) // Allow Ctrl/Cmd shortcuts (copy, paste, etc.)
+      (e.ctrlKey || e.metaKey)
     ) {
       return;
     }
 
-    // Only allow numbers and decimal point
     const char = e.key;
     const isNumber = /^[0-9]$/.test(char);
     const isDecimal = char === "." || char === decimalChar;
 
-    // For fiat, USDT, or BTC mode: allow numbers and one decimal
+    // Allow decimals in fiat/BTC/USDT modes
     if (fiat || isUSDT || $unitPreference === 'btc') {
       if (!isNumber && !isDecimal) {
         e.preventDefault();
@@ -414,294 +269,120 @@
         return;
       }
     } else {
-      // For sats mode: only allow numbers (no decimal)
+      // Sats mode: only numbers
       if (!isNumber) {
         e.preventDefault();
         return;
       }
     }
-  };
+  }
 
-  // CHANGED: make swap cycle through all three modes: USD -> Sats -> BTC -> USD
-  const swap = () => {
+  // Swap between display modes
+  function swap() {
+    isUserInput = false; // Clear user input flag when swapping
+
     if (fiat) {
-      // going: fiat -> sats (or USDT for USDT payments)
+      // Fiat -> Crypto
       fiat = false;
-      if (isUSDT) {
-        // For USDT, show as decimal (e.g., "1.50" not "150000000")
-        html = ((amount || 0) / 100000000).toFixed(8).replace(/\.?0+$/, '');
-        if (!html || html === '') html = '0';
-      } else {
-        // For Bitcoin, go to sats mode first
+      if (!isUSDT) {
         unitPreference.set('sats');
-        html = normalizeSats((amount || 0).toString());
       }
-      element && (element.textContent = html);
     } else if (!isUSDT && $unitPreference === 'sats') {
-      // going: sats -> BTC (only for Bitcoin, not USDT)
+      // Sats -> BTC
       unitPreference.set('btc');
-      const btcValue = (amount || 0) / 100000000;
-      html = btcValue.toString();
-      // Remove unnecessary trailing zeros after decimal
-      if (html.includes('.')) {
-        html = html.replace(/\.?0+$/, '');
-      }
-      if (!html || html === '' || html === '0.') html = '0';
-      element && (element.textContent = html);
     } else {
-      // going: BTC (or USDT) -> fiat
-      const cents = Math.round((parseFloat(amountFiat || "0") || 0) * 100);
-      fiatDigits = Math.max(0, cents).toString();
+      // Back to fiat
       fiat = true;
-      html = formatFiatFromDigits(fiatDigits, decimalChar);
-      element && (element.textContent = html);
     }
-    updateByMode();
-    prevHtml = html.toString();
 
-    // Move caret to end after swap
-    queueMicrotask(() => {
-      const node = element?.childNodes?.[0];
-      if (!node) return;
-      const range = document.createRange();
-      const sel = getSelection();
-      const L = node.length ?? node.textContent?.length ?? 0;
-      range.setStart(node, L);
-      range.setEnd(node, L);
-      sel.removeAllRanges();
-      sel.addRange(range);
-    });
-
+    // Update display for new mode
+    displayValue = satsToDisplay(amount);
+    element && (element.textContent = displayValue);
     $fiatStore = fiat;
-  };
+  }
 
-  const arrow = "<";
-  const decimal = ".";
-  const numPad = [
-    "1",
-    "2",
-    "3",
-    "4",
-    "5",
-    "6",
-    "7",
-    "8",
-    "9",
-    decimal,
-    "0",
-    arrow,
-  ];
-
-  // Track the previous amount to detect external changes
-  let previousAmount = $state(amount);
-
-  // Watch for external changes to amount (e.g., from quick amount buttons)
+  // Watch for external amount changes
   $effect(() => {
-    if (!element) {
+    // Skip if user is actively typing
+    if (isUserInput) {
       return;
     }
 
-    // If amount changed externally (not from user typing), clear the typing flags
-    if (amount !== previousAmount && !isUsingPad) {
-      isUserTyping = false;
-    }
-    previousAmount = amount;
-
-    // Don't run when user is actively typing or using numpad
-    if (isUserTyping || isUsingPad) {
+    // Skip if this was our own update
+    if (amount === lastInternalAmount) {
       return;
     }
 
-    // If amount is cleared/undefined, reset display to 0
-    if (!amount || amount === 0) {
-      fiatDigits = "0";
-      if (fiat) {
-        html = formatFiatFromDigits("0", decimalChar);
-      } else {
-        html = "0";
-      }
-      element.textContent = html;
-      prevHtml = html.toString();
-      return;
+    lastInternalAmount = amount;
+
+    // Update display for external change
+    displayValue = satsToDisplay(amount || 0);
+    if (element) {
+      element.textContent = displayValue;
     }
 
-    // When amount changes externally, update the display
-    if (fiat) {
-      // In fiat mode, convert to USD and display
-      let cents;
-      if (isUSDT) {
-        // For USDT: amount is in smallest units (10^8), 1:1 with USD
-        cents = Math.round((amount / 100000000) * 100);
-      } else {
-        // For Bitcoin: use exchange rate
-        cents = Math.round((amount * rate / 100000000) * 100);
-      }
-      fiatDigits = Math.max(0, cents).toString();
-      html = formatFiatFromDigits(fiatDigits, decimalChar);
-      element.textContent = html;
-
-      // Update amountFiat as well
-      const numericFiat = parseFloat((fiatDigits || "0")) / 100;
-      amountFiat = isFinite(numericFiat) ? numericFiat.toFixed(2) : "0.00";
+    // Update fiat display
+    if (isUSDT) {
+      amountFiat = ((amount || 0) / 100000000).toFixed(2);
     } else {
-      // In sats/BTC/USDT mode (non-fiat), only update display for external changes
-      if (isUSDT) {
-        // For USDT, show as decimal
-        const usdtAmount = (amount || 0) / 100000000;
-        const cents = Math.round(usdtAmount * 100);
-        fiatDigits = Math.max(0, cents).toString();
-        html = formatFiatFromDigits(fiatDigits, decimalChar);
-        element.textContent = html;
-      } else if ($unitPreference === 'btc') {
-        // For BTC mode, show as decimal BTC
-        // First check if current html already represents this amount (to preserve trailing decimal/zeros during typing)
-        const currentNumeric = parseFloat((html || "0").replace(decimalChar, '.')) || 0;
-        const currentAmount = Math.round(currentNumeric * 100000000);
-
-        if (currentAmount === amount) {
-          // Current display already represents this amount, don't update
-          // This preserves user's typing like "5." or "5.00"
-          return;
-        }
-
-        const btcValue = (amount || 0) / 100000000;
-        html = btcValue.toString();
-        // Remove unnecessary trailing zeros after decimal
-        if (html.includes('.')) {
-          html = html.replace(/\.?0+$/, '');
-        }
-        if (!html || html === '' || html === '0.') html = '0';
-        element.textContent = html;
-      } else {
-        // For sats mode, show raw satoshis
-        html = normalizeSats((amount || 0).toString());
-        element.textContent = html;
-      }
-
-      // Update amountFiat for display when not in fiat mode
-      if (isUSDT) {
-        const fval = amount / sats;
-        amountFiat = isFinite(fval) ? fval.toFixed(2) : "0.00";
-      } else {
-        const fval = amount && rate > 0 ? (amount * rate) / sats : 0;
-        amountFiat = fval && isFinite(fval) ? fval.toFixed(2) : "0.00";
-      }
-    }
-    prevHtml = html.toString();
-  });
-
-  // Reset display when payment type changes (e.g., switching between USDT and Bitcoin)
-  $effect(() => {
-    // When isUSDT changes, reset the display to avoid showing wrong conversion
-    if (element && html !== "0") {
-      // Recalculate display for current amount with new payment type
-      updateByMode();
+      amountFiat = rate > 0 ? (((amount || 0) * rate) / 100000000).toFixed(2) : "0.00";
     }
   });
 
-  // Track if we've initialized the display
-  let initialized = $state(false);
-
-  // Initialize display when element becomes available
-  $effect(() => {
-    if (!element || initialized) return;
-
-    // Set initial display based on current mode and amount
-    if (fiat) {
-      // In fiat mode, convert amount to fiat and display
-      let cents;
-      if (isUSDT) {
-        cents = Math.round((amount / 100000000) * 100);
-      } else {
-        cents = Math.round((amount * rate / 100000000) * 100);
-      }
-      fiatDigits = Math.max(0, cents).toString();
-      html = formatFiatFromDigits(fiatDigits, decimalChar);
-    } else {
-      // In non-fiat mode, show amount in appropriate format
-      if (isUSDT) {
-        const usdtAmount = (amount || 0) / 100000000;
-        const cents = Math.round(usdtAmount * 100);
-        fiatDigits = Math.max(0, cents).toString();
-        html = formatFiatFromDigits(fiatDigits, decimalChar);
-      } else if ($unitPreference === 'btc') {
-        const btcValue = (amount || 0) / 100000000;
-        html = btcValue.toString();
-        if (html.includes('.')) {
-          html = html.replace(/\.?0+$/, '');
-        }
-        if (!html || html === '' || html === '0.') html = '0';
-      } else {
-        html = normalizeSats((amount || 0).toString());
-      }
-    }
-
-    element.textContent = html;
-    prevHtml = html.toString();
-    initialized = true;
-  });
-
+  // Initialize
   onMount(() => {
     fiat = $fiatStore;
+    displayValue = satsToDisplay(amount || 0);
+    if (element) {
+      element.textContent = displayValue;
+    }
+
+    // Initialize fiat display
+    if (isUSDT) {
+      amountFiat = ((amount || 0) / 100000000).toFixed(2);
+    } else {
+      amountFiat = rate > 0 ? (((amount || 0) * rate) / 100000000).toFixed(2) : "0.00";
+    }
   });
 </script>
 
 <div class="flex justify-center items-center">
   <div class="space-y-5 w-full">
     <div class="text-center">
-      <div
-        class="text-3xl sm:text-4xl md:text-5xl font-semibold tracking-tight flex justify-center"
-      >
+      <div class="text-3xl sm:text-4xl md:text-5xl font-semibold tracking-tight flex justify-center">
         <div class="my-auto flex items-center gap-1">
           {#if fiat}
             {#if position === "before"}{symbol}{/if}
           {:else if isUSDT}
-            <iconify-icon
-              noobserver
-              icon="cryptocurrency:usdt"
-              class="text-green-400"
-              width="32"
-              height="32"
-            ></iconify-icon>
+            <iconify-icon noobserver icon="cryptocurrency:usdt" class="text-green-400" width="32" height="32"></iconify-icon>
           {:else if $unitPreference === 'btc'}
-            <iconify-icon
-              noobserver
-              icon="cryptocurrency:btc"
-              class="text-orange-400"
-              width="32"
-              height="32"
-            ></iconify-icon>
+            <iconify-icon noobserver icon="cryptocurrency:btc" class="text-orange-400" width="32" height="32"></iconify-icon>
           {:else}
-            <iconify-icon
-              noobserver
-              icon="ph:lightning-fill"
-              class="text-yellow-300"
-              width="32"
-              height="32"
-            ></iconify-icon>
+            <iconify-icon noobserver icon="ph:lightning-fill" class="text-yellow-300" width="32" height="32"></iconify-icon>
           {/if}
         </div>
 
-        <!-- contenteditable input -->
         <div
           use:focus
           role="textbox"
           tabindex="0"
           aria-label="Amount input"
-          aria-multiline="false"
           contenteditable
           inputmode={fiat || isUSDT || $unitPreference === 'btc' ? "decimal" : "numeric"}
           enterkeyhint="done"
           autocapitalize="off"
           autocorrect="off"
           spellcheck="false"
-          onpaste={pasted}
+          onpaste={handlePaste}
           onfocus={(e) => {
-            select(e);
+            const range = document.createRange();
+            range.selectNodeContents(e.target);
+            const sel = getSelection();
+            sel.removeAllRanges();
+            sel.addRange(range);
           }}
-          onblur={blur}
-          oninput={input}
-          onkeydown={keydown}
+          oninput={handleManualInput}
+          onkeydown={handleKeydown}
           class="outline-none my-auto"
           bind:this={element}
         ></div>
@@ -709,64 +390,36 @@
         {#if fiat && position === "after"}{symbol}{/if}
       </div>
 
-      <!-- swap button - show all three currency options with current highlighted -->
+      <!-- Currency toggle -->
       <button
         type="button"
-        class="flex flex-col items-center justify-center cursor-pointer w-full select-none gap-1 group"
-        aria-label="Swap currency display"
-        title="Click to cycle through currency displays"
-        onclick={(e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          swap();
-        }}
+        class="flex flex-col items-center justify-center cursor-pointer w-full select-none gap-1 group mt-2"
+        onclick={swap}
       >
         {#if isUSDT}
-          <!-- For USDT: only show USD ↔ USDT toggle -->
           <div class="flex items-center justify-center gap-2 text-xs sm:text-sm w-full">
             <span class={fiat ? "text-white/80 font-semibold" : "text-white/40"}>
               {f(amountFiat, currency, locale)}
             </span>
-            <iconify-icon
-              noobserver
-              icon="ph:arrows-left-right-bold"
-              class="text-white/40 group-hover:text-white/60"
-              width="12"
-            ></iconify-icon>
+            <iconify-icon noobserver icon="ph:arrows-left-right-bold" class="text-white/40 group-hover:text-white/60" width="12"></iconify-icon>
             <span class="{!fiat ? 'text-white/80 font-semibold' : 'text-white/40'} flex items-center gap-1">
-              <iconify-icon
-                noobserver
-                icon="cryptocurrency:usdt"
-                class="text-green-400"
-                width="12"
-              ></iconify-icon>
+              <iconify-icon noobserver icon="cryptocurrency:usdt" class="text-green-400" width="12"></iconify-icon>
               {isFinite(amount) ? (amount / 100000000).toFixed(2) : "0.00"} USDT
             </span>
           </div>
         {:else}
-          <!-- For Bitcoin: show USD • Sats • BTC with current highlighted -->
           <div class="flex items-center justify-center gap-2 text-xs sm:text-sm w-full">
             <span class={fiat ? "text-white/80 font-semibold" : "text-white/40"}>
               {f(amountFiat, currency, locale)}
             </span>
             <span class="text-white/20">•</span>
             <span class="{!fiat && $unitPreference === 'sats' ? 'text-white/80 font-semibold' : 'text-white/40'} flex items-center gap-1">
-              <iconify-icon
-                noobserver
-                icon="ph:lightning-fill"
-                class="text-yellow-300"
-                width="12"
-              ></iconify-icon>
+              <iconify-icon noobserver icon="ph:lightning-fill" class="text-yellow-300" width="12"></iconify-icon>
               {isFinite(amount) ? s(amount, locale) : "0"}
             </span>
             <span class="text-white/20">•</span>
             <span class="{!fiat && $unitPreference === 'btc' ? 'text-white/80 font-semibold' : 'text-white/40'} flex items-center gap-1">
-              <iconify-icon
-                noobserver
-                icon="cryptocurrency:btc"
-                class="text-orange-400"
-                width="12"
-              ></iconify-icon>
+              <iconify-icon noobserver icon="cryptocurrency:btc" class="text-orange-400" width="12"></iconify-icon>
               {isFinite(amount) ? btc(amount) : "0.00000000"}
             </span>
           </div>
@@ -778,51 +431,56 @@
       </button>
     </div>
 
+    <!-- Clear button (full width) -->
+    <button
+      type="button"
+      class="btn w-full bg-red-500/10 hover:bg-red-500/20 text-red-400"
+      onclick={() => handleInput("clear")}
+    >
+      Clear
+    </button>
+
+    <!-- Numpad 3x4 grid -->
     <div class="grid grid-cols-3 gap-2 w-full mx-auto">
-      {#each numPad as value}
-        {#if value === arrow}
-          <button
-            type="button"
-            class="btn"
-            aria-label="Backspace"
-            onclick={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              handleInput(value);
-            }}
-          >
-            <Left />
-          </button>
-        {:else if value === decimal}
-          <button
-            type="button"
-            class="btn"
-            class:opacity-50={!fiat && !isUSDT && $unitPreference !== 'btc'}
-            class:cursor-not-allowed={!fiat && !isUSDT && $unitPreference !== 'btc'}
-            aria-label="Decimal point"
-            onclick={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              handleInput(value);
-            }}
-          >
-            {decimalChar}
-          </button>
-        {:else}
-          <button
-            type="button"
-            class="btn"
-            aria-label={`Key ${value}`}
-            onclick={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              handleInput(value);
-            }}
-          >
-            {value}
-          </button>
-        {/if}
+      <!-- Row 1: 1 2 3 -->
+      {#each ["1", "2", "3"] as value}
+        <button type="button" class="btn" onclick={() => handleInput(value)}>
+          {value}
+        </button>
       {/each}
+
+      <!-- Row 2: 4 5 6 -->
+      {#each ["4", "5", "6"] as value}
+        <button type="button" class="btn" onclick={() => handleInput(value)}>
+          {value}
+        </button>
+      {/each}
+
+      <!-- Row 3: 7 8 9 -->
+      {#each ["7", "8", "9"] as value}
+        <button type="button" class="btn" onclick={() => handleInput(value)}>
+          {value}
+        </button>
+      {/each}
+
+      <!-- Row 4: . 0 ← -->
+      <button
+        type="button"
+        class="btn"
+        class:opacity-50={!fiat && !isUSDT && $unitPreference !== 'btc'}
+        class:cursor-not-allowed={!fiat && !isUSDT && $unitPreference !== 'btc'}
+        onclick={() => handleInput(".")}
+      >
+        {decimalChar}
+      </button>
+
+      <button type="button" class="btn" onclick={() => handleInput("0")}>
+        0
+      </button>
+
+      <button type="button" class="btn" onclick={() => handleInput("backspace")}>
+        <Left />
+      </button>
     </div>
   </div>
 </div>

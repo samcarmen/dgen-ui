@@ -1,13 +1,14 @@
 <script>
   import { onMount } from "svelte";
   import { parseInput, prepareSendPayment, sendPayment, prepareLnurlPay, lnurlPay, fetchLightningLimits, isConnected } from "$lib/walletService";
-  import { fail } from "$lib/utils";
+  import { fail, loc, sats } from "$lib/utils";
   import { goto } from "$app/navigation";
   import Spinner from "./Spinner.svelte";
+  import Numpad from "./Numpad.svelte";
   import { t } from "$lib/translations";
   import { walletBalance } from "$lib/stores/wallet";
 
-  let { payreq } = $props();
+  let { payreq, rate = 0, currency = "USD" } = $props();
 
   let initializing = $state(true);
   let loading = $state(false);
@@ -307,17 +308,8 @@
           </div>
 
           <div class="text-left">
-            <label class="text-sm text-white/60 mb-2 block">Amount (sats)</label>
-            <input
-              type="number"
-              bind:value={amountSat}
-              min={minSendable}
-              max={maxSendable}
-              class="input w-full"
-              onchange={prepareLightningAddressPayment}
-              disabled={loading}
-            />
-            <p class="text-xs text-white/40 mt-1">
+            <Numpad bind:amount={amountSat} {rate} {currency} skipBalanceCheck={true} />
+            <p class="text-xs text-white/40 mt-2 text-center">
               Min: {formatSats(minSendable)} | Max: {formatSats(maxSendable)}
             </p>
           </div>

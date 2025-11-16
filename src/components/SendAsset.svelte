@@ -2,12 +2,15 @@
   import { prepareSendAsset, sendAsset } from "$lib/assetService";
   import { ASSET_IDS, getAssetTicker, formatAssetAmount, supportsAssetFees } from "$lib/assets";
   import { assetBalances } from "$lib/stores/wallet";
+  import Numpad from "./Numpad.svelte";
+  import getRates from "$lib/rates";
+  import { onMount } from "svelte";
 
-  let { onSuccess, onCancel } = $props();
+  let { onSuccess, onCancel, currency = "USD" } = $props();
 
   let selectedAsset = $state(ASSET_IDS.LBTC);
   let destination = $state("");
-  let amount = $state("");
+  let amount = $state(0); // Changed to number for Numpad
   let payerNote = $state("");
   let estimateAssetFees = $state(false);
   let useAssetFees = $state(false);
@@ -16,6 +19,18 @@
   let error = $state("");
   let prepareResponse = $state(null);
   let fromAsset = $state("");
+  let rate = $state(0);
+  let submit = $state();
+
+  // Fetch rates on mount
+  onMount(async () => {
+    try {
+      const rates = await getRates();
+      rate = rates[currency] || 0;
+    } catch (e) {
+      console.error("Failed to fetch rates:", e);
+    }
+  });
 
   const assets = [
     { id: ASSET_IDS.LBTC, name: "Bitcoin", ticker: "BTC", icon: "cryptocurrency:btc" },
@@ -43,14 +58,20 @@
     prepareResponse = null;
 
     try {
-      const receiverAmount = parseFloat(amount);
-      if (!receiverAmount || receiverAmount <= 0) {
+      if (!amount || amount <= 0) {
         throw new Error("Please enter a valid amount");
       }
 
       if (!destination) {
         throw new Error("Please enter a destination address");
       }
+
+      // Convert amount from satoshis to asset units
+      // For LBTC: 1 BTC = 100,000,000 sats, so divide by 100000000
+      // For USDT: amount is already in smallest units (same as sats precision)
+      const receiverAmount = selectedAsset === ASSET_IDS.USDT
+        ? amount / 100000000  // USDT uses same precision as BTC
+        : amount / 100000000; // LBTC is BTC on Liquid
 
       prepareResponse = await prepareSendAsset({
         destination,
@@ -149,19 +170,14 @@
         <label class="label">
           <span class="label-text font-semibold">Amount</span>
         </label>
-        <div class="join w-full">
-          <input
-            type="number"
-            bind:value={amount}
-            placeholder="0.00"
-            class="input input-bordered join-item flex-1"
-            step="0.00000001"
-            min="0"
-          />
-          <button class="btn join-item" disabled>
-            {getAssetTicker(selectedAsset)}
-          </button>
-        </div>
+        <Numpad
+          bind:amount
+          {rate}
+          {currency}
+          {submit}
+          skipBalanceCheck={true}
+          isUSDT={selectedAsset === ASSET_IDS.USDT}
+        />
       </div>
 
       <!-- From Asset (for swapping) -->
@@ -213,6 +229,7 @@
 
       <div class="flex gap-3">
         <button
+          bind:this={submit}
           class="btn btn-primary flex-1"
           onclick={preparePayment}
           disabled={isPreparingPayment || !destination || !amount}
@@ -246,8 +263,19 @@
         </div>
         <div class="flex justify-between">
           <span class="opacity-60">Amount:</span>
-          <span class="font-semibold">{amount} {getAssetTicker(selectedAsset)}</span>
+          <span class="font-semibold">{(amount / 100000000).toFixed(8)} {getAssetTicker(selectedAsset)}</span>
         </div>
+        {#if rate > 0}
+          <div class="flex justify-between">
+            <span class="opacity-60">≈ {currency}:</span>
+            <span class="font-semibold">
+              {selectedAsset === ASSET_IDS.USDT
+                ? `${(amount / 100000000).toFixed(2)} ${currency}`
+                : `${((amount * rate) / 100000000).toFixed(2)} ${currency}`
+              }
+            </span>
+          </div>
+        {/if}
         {#if prepareResponse.feesSat}
           <div class="flex justify-between">
             <span class="opacity-60">Network Fees:</span>

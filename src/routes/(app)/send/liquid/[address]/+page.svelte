@@ -176,8 +176,8 @@
       </p>
     </div>
   {:else}
-    <div class="glass border-2 border-cyan-400/30 rounded-xl p-4 space-y-2">
-      <div class="flex items-center justify-center gap-2 text-cyan-400">
+    <div class="glass border-2 border-orange-400/30 rounded-xl p-4 space-y-2">
+      <div class="flex items-center justify-center gap-2 text-orange-400">
         <iconify-icon icon="cryptocurrency:lbtc" width="24"></iconify-icon>
         <span class="text-lg">Liquid Bitcoin (L-BTC)</span>
       </div>

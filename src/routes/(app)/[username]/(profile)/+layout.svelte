@@ -19,6 +19,7 @@
   import { bech32 } from "@scure/base";
   import { page } from "$app/stores";
   import { PUBLIC_DOMAIN } from "$env/static/public";
+  import { lnAddressStore } from "$lib/stores/lightningAddress";
 
   let { data, children } = $props();
 
@@ -121,6 +122,9 @@
   );
   $effect(() => followList.then((l) => (list = l)));
   let following = $derived(list.some((t) => t.includes(subject.pubkey)));
+
+  // Get lightning address from store (source of truth) or fall back to database value
+  let displayLightningAddress = $derived($lnAddressStore.lnAddress || subject?.lightningAddress);
 </script>
 
 <div class="container mx-auto w-full px-4 flex flex-wrap lg:flex-nowrap">
@@ -254,15 +258,15 @@
           </div>
         </div> -->
 
-        {#if subject?.lightningAddress && subject.id === user?.id}
+        {#if displayLightningAddress && subject.id === user?.id}
           <div class="flex flex-col items-center lg:items-start">
             <div class="text-secondary">{$t("user.settings.LIGHTNING_ADDRESS")}</div>
             <div class="flex gap-4">
               <div class="break-all grow text-xl">
-                {subject.lightningAddress}
+                {displayLightningAddress}
               </div>
               <div class="flex mb-auto gap-1">
-                <button class="my-auto" onclick={() => copy(subject.lightningAddress)} aria-label="Copy Lightning address"
+                <button class="my-auto" onclick={() => copy(displayLightningAddress)} aria-label="Copy Lightning address"
                   ><iconify-icon noobserver icon="ph:copy-bold" width="32"
                   ></iconify-icon></button
                 >

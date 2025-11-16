@@ -155,6 +155,9 @@
         user.lnurl = recovered.lnurl;
         user.bip353Address = recovered.bip353Address;
 
+        // Invalidate to refresh all user data across the app
+        invalidate("app:user");
+
         return;
       }
 
@@ -208,6 +211,9 @@
       user.lightningAddress = result.lightningAddress;
       user.lnurl = result.lnurl;
       user.bip353Address = result.bip353Address;
+
+      // Invalidate to refresh all user data across the app
+      invalidate("app:user");
 
     } catch (e) {
       console.error('[Lightning Address] Auto-registration failed:', e);

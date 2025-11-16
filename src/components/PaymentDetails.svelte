@@ -123,8 +123,7 @@
   <!-- Amount Details -->
   <div class="card bg-base-200/50 border border-white/10">
     <div class="card-body p-4">
-      <h3 class="text-lg font-semibold mb-3 flex items-center gap-2">
-        <iconify-icon icon="ph:lightning-bold" width="20" class="text-yellow-400"></iconify-icon>
+      <h3 class="text-lg font-semibold mb-3">
         Payment Amount
       </h3>
 
@@ -158,8 +157,7 @@
   {#if invoice || paymentHash || preimage}
     <div class="card bg-base-200/50 border border-white/10">
       <div class="card-body p-4">
-        <h3 class="text-lg font-semibold mb-3 flex items-center gap-2">
-          <iconify-icon icon="ph:lightning-bold" width="20" class="text-yellow-400"></iconify-icon>
+        <h3 class="text-lg font-semibold mb-3">
           Lightning Details
         </h3>
 

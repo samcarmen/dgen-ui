@@ -83,19 +83,24 @@
           <div class="flex items-center gap-2 mt-1">
             <span class="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-medium
               {payment.status === 'complete' ? 'bg-green-500/20 text-green-400 border border-green-500/30' : ''}
-              {payment.status === 'pending' ? 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/30' : ''}
+              {payment.status === 'pending' || payment.status === 'waitingFeeAcceptance' ? 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/30' : ''}
               {payment.status === 'failed' ? 'bg-red-500/20 text-red-400 border border-red-500/30' : ''}
             ">
               {#if payment.status === 'complete'}
                 <iconify-icon icon="ph:check-circle" width="16"></iconify-icon>
-              {:else if payment.status === 'pending'}
+              {:else if payment.status === 'pending' || payment.status === 'waitingFeeAcceptance'}
                 <iconify-icon icon="ph:clock" width="16" class="animate-pulse"></iconify-icon>
               {:else if payment.status === 'failed'}
                 <iconify-icon icon="ph:x-circle" width="16"></iconify-icon>
               {/if}
-              {payment.status}
+              {payment.status === 'waitingFeeAcceptance' ? 'Pending' : payment.status}
             </span>
           </div>
+          {#if payment.status === 'waitingFeeAcceptance'}
+            <div class="text-xs text-yellow-400/80 mt-2">
+              Waiting for fee acceptance
+            </div>
+          {/if}
         </div>
 
         <div>

@@ -870,7 +870,7 @@
                       </span>
 
                       <!-- Status Badge -->
-                      {#if payment.status === 'pending'}
+                      {#if payment.status === 'pending' || payment.status === 'waitingFeeAcceptance'}
                         <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-gradient-to-r from-amber-500/20 to-orange-500/20 border border-amber-400/30 text-xs font-medium text-amber-300 shadow-lg shadow-amber-500/10">
                           <span class="relative flex h-2 w-2">
                             <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
@@ -885,11 +885,6 @@
                             <span class="relative inline-flex rounded-full h-2 w-2 bg-blue-500"></span>
                           </span>
                           Confirming
-                        </span>
-                      {:else if payment.status === 'waitingFeeAcceptance'}
-                        <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-gradient-to-r from-purple-500/20 to-pink-500/20 border border-purple-400/30 text-xs font-medium text-purple-300">
-                          <iconify-icon icon="ph:currency-dollar" width="12"></iconify-icon>
-                          Review Fees
                         </span>
                       {:else if payment.status === 'refundable'}
                         <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-gradient-to-r from-orange-500/20 to-red-500/20 border border-orange-400/30 text-xs font-medium text-orange-300">
@@ -925,6 +920,13 @@
                         {payment.paymentTypeLabel} {payment.paymentType === 'receive' ? 'received' : 'sent'}
                       {/if}
                     </div>
+
+                    <!-- Waiting Fee Acceptance Status -->
+                    {#if payment.status === 'waitingFeeAcceptance'}
+                      <div class="text-xs text-amber-300/80 mt-0.5">
+                        Waiting for fee acceptance
+                      </div>
+                    {/if}
 
                     <!-- Secondary Amount -->
                     <div class="text-xs text-white/40">

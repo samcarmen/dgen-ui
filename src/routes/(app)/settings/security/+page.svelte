@@ -1335,7 +1335,7 @@
                           This will generate a NEW wallet and REPLACE your current one!
                         </p>
                         <p class="text-white/80 text-xs sm:text-sm mt-2">
-                          Make absolutely sure you have saved your current wallet's recovery phrase. You will need it to restore this wallet in the future.
+                          Make absolutely sure you have saved your current wallet's recovery phrase. You will need it to restore that wallet in the future.
                         </p>
                       </div>
                     </div>

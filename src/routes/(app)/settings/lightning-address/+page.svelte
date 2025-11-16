@@ -349,7 +349,7 @@
   <div class="mb-6">
     <h1 class="text-3xl font-bold mb-2">Lightning Address</h1>
     <p class="text-white/60">
-      Here you can modify your optional username "username@breez.fun". Users can send you lightning with just your username (easier than giving someone a long string of letters/numbers)
+      Here you can modify your Lightning Address. With DGEN, users can send you lightning with just your Lightning Address (easier than a long string of letters/numbers)
     </p>
   </div>
 

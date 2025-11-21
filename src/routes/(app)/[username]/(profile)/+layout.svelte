@@ -19,7 +19,7 @@
   import { bech32 } from "@scure/base";
   import { page } from "$app/stores";
   import { PUBLIC_DOMAIN } from "$env/static/public";
-  import { lnAddressStore } from "$lib/stores/lightningAddress";
+  import { lnAddressStore, isLoading as lnAddressLoading } from "$lib/stores/lightningAddress";
 
   let { data, children } = $props();
 
@@ -151,12 +151,19 @@
       </div>
       {#if subject.id === user?.id}
         <div class="flex justify-center">
-          <button
-            class="text-xs text-white/90 hover:text-white hover:underline cursor-pointer transition-all"
-            onclick={toggleDetails}
-          >
-            (click here to show your Lightning Address)
-          </button>
+          {#if displayLightningAddress}
+            <button
+              class="text-xs text-white/90 hover:text-white hover:underline cursor-pointer transition-all"
+              onclick={toggleDetails}
+            >
+              (click here to show your Lightning Address)
+            </button>
+          {:else if $lnAddressLoading}
+            <div class="text-xs text-white/60 flex items-center gap-1">
+              <iconify-icon noobserver icon="ph:spinner" width="14" class="animate-spin"></iconify-icon>
+              <span>Setting up your Lightning Address...</span>
+            </div>
+          {/if}
         </div>
 
         <!-- Visa Card Coming Soon -->

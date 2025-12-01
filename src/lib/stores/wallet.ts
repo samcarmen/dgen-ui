@@ -82,12 +82,17 @@ const createWalletState = (mnemonicStore?: any, passwordStore?: any) => {
         }
         
         const info = await walletService.getWalletInfo();
-        
+
+        // Mark initial sync complete if we got valid info with balance data
+        // This prevents showing loading placeholder when we already have balance
+        const hasValidBalance = info?.walletInfo?.balanceSat !== undefined;
+
         update(state => ({
           ...state,
           isUnlocked: true,
           isInitialized: true,
           isConnecting: false,
+          didCompleteInitialSync: hasValidBalance || state.didCompleteInitialSync,
           info,
           error: null
         }));

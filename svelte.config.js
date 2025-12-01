@@ -45,7 +45,8 @@ const config = {
           'https://api.iconify.design',
           'https://api.simplesvg.com',
           'https://api.unisvg.com',
-          'data:'
+          'data:',
+          'https://widget2agent-657488364208.asia-southeast1.run.app'
         ],
         'frame-ancestors': ['none'],
         'base-uri': ['self'],

@@ -138,7 +138,7 @@
       
       URL.revokeObjectURL(url);
 
-      success("Logs exported");
+      success("Exporting logs");
     } catch (err) {
       console.error("Export failed:", err);
       fail("Failed to export logs");

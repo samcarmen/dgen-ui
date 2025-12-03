@@ -75,13 +75,3 @@ export async function getLogs(): Promise<string[]> {
   const db = await getDB();
   return db.getAll(STORE_NAME);
 }
-
-/**
- * Clear all persisted logs.
- */
-export async function clearLogs(): Promise<void> {
-  const db = await getDB();
-  const tx = db.transaction(STORE_NAME, 'readwrite');
-  await tx.store.clear();
-  await tx.done;
-}

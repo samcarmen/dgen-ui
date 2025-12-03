@@ -416,19 +416,6 @@
             <span class="font-semibold">Export Logs</span>
           </div>
         </button>
-
-        <!-- Clear Logs -->
-        <!-- <button
-          type="button"
-          class="flex-1 p-4 rounded-xl border-2 transition-all duration-300 border-red-500/40 bg-red-500/20 hover:border-red-400"
-          onclick={clearPersistedLogs}
-        >
-          <div class="flex items-center justify-center gap-2">
-            <iconify-icon icon="ph:trash-bold" class="text-red-300" width="24"></iconify-icon>
-            <span class="font-semibold">Clear Logs</span>
-            </div>
-            <p class="text-xs text-white/60 mt-1">(not recommended for most users)</p>
-        </button> -->
       </div>
     </div>
   </div>

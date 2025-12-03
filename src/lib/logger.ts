@@ -10,9 +10,11 @@ export enum LogLevel {
   ERROR = 'ERROR'
 }
 
-function shouldPersist(level: string): boolean {
+const PERSIST_LEVELS_PROD = ['INFO', 'WARN', 'ERROR'] as const;
+
+function shouldPersist(level: LogLevel): boolean {
   if (import.meta.env.PROD) {
-    return level === 'INFO' || level === 'WARN' || level === 'ERROR';
+    return PERSIST_LEVELS_PROD.includes(level as any);
   }
   return true
 }

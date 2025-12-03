@@ -10,7 +10,7 @@
   import { locale, t } from "$lib/translations";
   import { post, success, fail, info } from "$lib/utils";
   import { page } from "$app/stores";
-  import { getLogs, clearLogs } from "$lib/logStorage";
+  import { getLogs } from "$lib/logStorage";
   // import { PUBLIC_VAPID_PUBKEY } from "$env/static/public";
 
   let { data } = $props();

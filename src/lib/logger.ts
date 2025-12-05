@@ -59,7 +59,7 @@ export const initBreezLogger = () => {
 
 // Custom application logger with tags
 export class Logger {
-  constructor(private tag: string) {}
+  constructor(private tag: string) { }
 
   private format(level: string, ...args: any[]): any[] {
     const timestamp = new Date().toISOString();
@@ -68,10 +68,10 @@ export class Logger {
 
   private persist(level: string, ...args: any[]) {
     if (!shouldPersist(level)) return;
-
     const [prefix, ...rest] = this.format(level, ...args);
-    const line = `${prefix}: ${rest.join(" ")}`;
-
+    const line = `${prefix}: ${rest.map(arg =>
+      typeof arg === 'object' ? JSON.stringify(arg) : arg
+    ).join(" ")}`;
     void appendLog(line);
 
   }

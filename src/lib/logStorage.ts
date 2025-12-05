@@ -79,11 +79,28 @@ async function enforceRetention(): Promise<void> {
  */
 export async function getLogs(): Promise<string[]> {
   if (!isBrowser()) return [];
+
   try {
     const db = await getDB();
     return db.getAll(STORE_NAME);
   } catch (err) {
     console.error('[logStorage] Failed to get logs:', err);
     return [];
+  }
+}
+
+/**
+ * Clear all logs
+ */
+export async function clearLogs(): Promise<void> {
+  if (!isBrowser()) return;
+
+  try {
+    const db = await getDB();
+    const tx = db.transaction(STORE_NAME, 'readwrite');
+    tx.store.clear();
+    await tx.done;
+  } catch (err) {
+    console.error('[logStorage] Failed to clear logs:', err);
   }
 }

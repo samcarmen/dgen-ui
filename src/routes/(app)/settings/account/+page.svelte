@@ -115,7 +115,7 @@
     }
   }
 
-  export async function exportLogs() {
+  async function exportLogs() {
     try {
       const logs = await getLogs();
       if (!logs || logs.length === 0) {

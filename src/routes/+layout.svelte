@@ -35,6 +35,7 @@
     if (!browser) return;
 
     // Force render after 2 seconds to prevent white screen issues
+    // This ensures the app always loads even if translations are stuck
     setTimeout(() => {
       forceRender = true;
     }, 2000);

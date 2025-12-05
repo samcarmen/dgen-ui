@@ -39,10 +39,18 @@
       forceRender = true;
     }, 2000);
 
-    // Enable chat widget after initial load
-    setTimeout(() => {
-      showChatWidget = true;
-    }, 1000);
+    // Load chat widget only when the browser is idle for better performance.
+    // This avoids arbitrary timing and reduces layout shift during first render.
+    if ("requestIdleCallback" in window) {
+      requestIdleCallback(() => {
+        showChatWidget = true;
+      });
+    } else {
+      // Fallback for older browsers
+      setTimeout(() => {
+        showChatWidget = true;
+      }, 500);
+    }
 
     // Start security monitoring for suspicious DOM access
     domSecurityMonitor.startMonitoring();

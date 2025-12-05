@@ -123,11 +123,9 @@
         return;
       }
       
-      const blob = new Blob(
-        logs.flatMap(log => [log, '\n']), 
-        { type: "text/plain" }
-      );
-      
+      const text = logs.join('\n') + '\n';
+      const blob = new Blob([text], { type: 'text/plain' });
+
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;

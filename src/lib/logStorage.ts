@@ -1,7 +1,7 @@
 import { openDB, type IDBPDatabase } from 'idb';
 
 const DB_NAME = 'dgen-logs';
-const DB_VERSION = 2;
+const DB_VERSION = 1;
 const STORE_NAME = 'logs';
 
 const MAX_LOGS = 5000;
@@ -15,13 +15,13 @@ async function getDB(): Promise<IDBPDatabase> {
   if (!dbPromise) {
     dbPromise = openDB(DB_NAME, DB_VERSION, {
       upgrade(db, oldVersion) {
-        if (db.objectStoreNames.contains(STORE_NAME)) {
-          db.deleteObjectStore(STORE_NAME);
+        if (oldVersion < 1) {
+          if (db.objectStoreNames.contains(STORE_NAME)) {
+            db.deleteObjectStore(STORE_NAME);
+          }
+          db.createObjectStore(STORE_NAME, { autoIncrement: true });
         }
-
-        db.createObjectStore(STORE_NAME, {
-          autoIncrement: true,
-        });
+        // Future migrations: if (oldVersion < 2) { ... }
       },
     });
   }

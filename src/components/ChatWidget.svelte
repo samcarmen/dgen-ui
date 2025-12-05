@@ -39,10 +39,11 @@
     buildKey("messages", orgId, userId);
 
   function generateSessionId(): string {
-    if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
-      return crypto.randomUUID();
-    }
-    return Math.random().toString(36).slice(2);
+    const array = new Uint8Array(16);
+    crypto.getRandomValues(array);
+    return Array.from(array, byte => 
+      byte.toString(16).padStart(2, '0')
+    ).join('');
   }
 
   // Initialize session and messages

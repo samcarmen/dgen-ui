@@ -68,7 +68,9 @@ async function enforceRetention(): Promise<void> {
   const toDelete = count - MAX_LOGS;
   const tx = db.transaction(STORE_NAME, 'readwrite');
   const keys = await tx.store.getAllKeys(undefined, toDelete);
-  await Promise.all(keys.map(key => tx.store.delete(key)));
+  for (const key of keys) {
+    tx.store.delete(key);
+  }
   await tx.done;
 }
 

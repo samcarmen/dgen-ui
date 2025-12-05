@@ -74,6 +74,12 @@
         console.warn("[DGENChat] Failed to parse stored messages", e);
       }
     }
+
+    window.addEventListener("keydown", handleGlobalKeydown);
+
+    return () => {
+      window.removeEventListener("keydown", handleGlobalKeydown);
+    };
   });
 
   // Persist messages to sessionStorage whenever they change
@@ -92,8 +98,21 @@
     }
   });
 
+  // Focus Handling
+  $effect(() => {
+    if (isOpen && textareaRef) {
+      textareaRef.focus();
+    }
+  });
+
   function toggleOpen() {
     isOpen = !isOpen;
+  }
+
+  function handleGlobalKeydown(event: KeyboardEvent) {
+    if (event.key === "Escape" && isOpen) {
+      isOpen = false;
+    }
   }
 
   async function sendMessage() {
@@ -201,26 +220,43 @@
 
 <!-- Floating button -->
 <button
-  onclick={toggleOpen}
   class="floating-button"
-  aria-label="Open chat"
+  onclick={toggleOpen}
+  aria-label={isOpen ? "Close DGEN chat" : "Open DGEN chat"}
+  aria-haspopup="dialog"
+  aria-expanded={isOpen}
+  aria-controls="dgen-chat-widget"
 >
   💬
 </button>
 
 <!-- Chat window -->
 {#if isOpen}
-  <div class="widget-container">
+  <div
+    class="widget-container"
+    id="dgen-chat-widget"
+    role="dialog"
+    aria-modal="true"
+    aria-label="DGEN support chat"
+  >
+    <!-- Header -->
     <div class="header">
       <div>
         <div style="font-weight: 600;">DGEN Chat</div>
         <div style="font-size: 12px; opacity: 0.8;">Ask me anything</div>
       </div>
       <div>
-        <button onclick={toggleOpen} class="close-button">✕</button>
+        <button
+          onclick={toggleOpen}
+          class="close-button"
+          aria-label="Close chat"
+        >
+          ✕
+        </button>
       </div>
     </div>
 
+    <!-- Messages -->
     <div class="messages-container">
       {#if messages.length === 0}
         <div class="empty-state">
@@ -251,10 +287,12 @@
       <div bind:this={bottomRef}></div>
     </div>
 
+    <!-- Error -->
     {#if error}
       <div class="error">{error}</div>
     {/if}
 
+    <!-- Input -->
     <div class="input-container">
       <textarea
         bind:this={textareaRef}

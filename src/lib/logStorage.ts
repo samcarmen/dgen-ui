@@ -75,6 +75,10 @@ async function flushPendingLines(): Promise<void> {
     console.error('[logStorage] Failed to flush logs batch:', err);
   } finally {
     isFlushing = false;
+
+    if (pendingLines.length > 0) {
+      void flushPendingLines();
+    }
   }
 }
 
@@ -147,5 +151,6 @@ export async function clearLogs(): Promise<void> {
     await tx.done;
   } catch (err) {
     console.error('[logStorage] Failed to clear logs:', err);
+    throw err;
   }
 }

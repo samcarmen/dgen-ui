@@ -7,14 +7,20 @@ export enum LogLevel {
   DEBUG = 'DEBUG',
   INFO = 'INFO',
   WARN = 'WARN',
-  ERROR = 'ERROR'
+  ERROR = 'ERROR',
+  LOG = 'LOG',
 }
 
-const PERSIST_LEVELS_PROD = ['INFO', 'WARN', 'ERROR', 'LOG'] as const;
+const PERSIST_LEVELS_PROD: LogLevel[] = [
+  LogLevel.INFO,
+  LogLevel.WARN,
+  LogLevel.ERROR,
+  LogLevel.LOG,
+];
 
-function shouldPersist(level: string): boolean {
+function shouldPersist(level: LogLevel): boolean {
   if (import.meta.env.PROD) {
-    return (PERSIST_LEVELS_PROD as readonly string[]).includes(level);
+    return PERSIST_LEVELS_PROD.includes(level);
   }
   return true;
 }
@@ -23,21 +29,22 @@ function shouldPersist(level: string): boolean {
 class BreezLogger {
   log = (entry: LogEntry) => {
     const timestamp = new Date().toISOString();
-    const level = entry.level.toUpperCase();
+    const raw = entry.level.toUpperCase();
+    const level = LogLevel[raw as keyof typeof LogLevel] ?? LogLevel.INFO;
     const prefix = `[${timestamp}] [Breez SDK] [${level}]`;
 
     switch (level) {
-      case 'ERROR':
+      case LogLevel.ERROR:
         console.error(`${prefix}:`, entry.line);
         break;
-      case 'WARN':
+      case LogLevel.WARN:
         console.warn(`${prefix}:`, entry.line);
         break;
-      case 'INFO':
+      case LogLevel.INFO:
         console.info(`${prefix}:`, entry.line);
         break;
-      case 'DEBUG':
-      case 'TRACE':
+      case LogLevel.DEBUG:
+      case LogLevel.TRACE:
         console.debug(`${prefix}:`, entry.line);
         break;
       default:
@@ -66,51 +73,58 @@ export class Logger {
     return [`[${timestamp}] [${this.tag}] [${level}]`, ...args];
   }
 
-  private persist(level: string, ...args: any[]) {
+  private persist(level: LogLevel, ...args: any[]) {
     if (!shouldPersist(level)) return;
 
     const [prefix, ...rest] = this.format(level, ...args);
-    const line = `${prefix}: ${rest.map(arg => {
-      try {
-        if (typeof arg === 'object' && arg !== null) {
-          return JSON.stringify(arg);
+    const line = `${prefix}: ${rest
+      .map((arg) => {
+        try {
+          if (typeof arg === 'object' && arg !== null) {
+            const serialized = JSON.stringify(arg);
+            return serialized.length > 1000
+              ? serialized.slice(0, 1000) + '...[truncated]'
+              : serialized;
+          }
+          return String(arg);
+        } catch {
+          const type = Object.prototype.toString.call(arg);
+          return `[unserializable ${type}]`;
         }
-        return String(arg);
-      } catch {
-        return '[unserializable object]';
-      }
-    }).join(" ")}`;
+      })
+      .join(' ')}`;
+
     void appendLog(line);
   }
 
   trace(...args: any[]) {
     console.debug(...this.format('TRACE', ...args));
-    this.persist('TRACE', ...args);
+    this.persist(LogLevel.TRACE, ...args);
   }
 
   debug(...args: any[]) {
     console.debug(...this.format('DEBUG', ...args));
-    this.persist('DEBUG', ...args);
+    this.persist(LogLevel.DEBUG, ...args);
   }
 
   info(...args: any[]) {
     console.info(...this.format('INFO', ...args));
-    this.persist('INFO', ...args);
+    this.persist(LogLevel.INFO, ...args);
   }
 
   warn(...args: any[]) {
     console.warn(...this.format('WARN', ...args));
-    this.persist('WARN', ...args);
+    this.persist(LogLevel.WARN, ...args);
   }
 
   error(...args: any[]) {
     console.error(...this.format('ERROR', ...args));
-    this.persist('ERROR', ...args);
+    this.persist(LogLevel.ERROR, ...args);
   }
 
   log(...args: any[]) {
     console.log(...this.format('LOG', ...args));
-    this.persist('LOG', ...args);
+    this.persist(LogLevel.LOG, ...args);
   }
 }
 

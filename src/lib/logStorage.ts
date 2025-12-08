@@ -82,6 +82,12 @@ async function flushPendingLines(): Promise<void> {
   }
 }
 
+// Best-effort flush on page unload.
+//
+// Note: beforeunload does NOT wait for async work to finish.
+// The browser may terminate the context before IndexedDB writes complete.
+// This flush is therefore opportunistic only — the batching logic (size + timer)
+// is what provides durability during normal operation.
 if (isBrowser()) {
   window.addEventListener('beforeunload', () => {
     void flushPendingLines();

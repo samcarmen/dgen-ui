@@ -102,6 +102,10 @@ export async function appendLog(line: string): Promise<void> {
   pendingLines.push(line);
 
   if (pendingLines.length >= WRITE_BATCH_SIZE) {
+    if (flushTimeout !== null) {
+      clearTimeout(flushTimeout);
+      flushTimeout = null;
+    }
     void flushPendingLines();
     return;
   }

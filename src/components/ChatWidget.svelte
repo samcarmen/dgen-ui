@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import { renderSafeMarkdown } from "$lib/safeMarkdown";
 
   type ChatRole = "user" | "assistant";
 
@@ -8,6 +9,7 @@
     role: ChatRole;
     content: string;
     createdAt: number;
+    html?: string;
   }
 
   interface Props {
@@ -182,6 +184,7 @@
         role: "assistant",
         content: answer,
         createdAt: Date.now(),
+        html: renderSafeMarkdown(answer),
       };
       messages = [...messages, assistantMessage];
     } catch (err) {
@@ -279,7 +282,11 @@
           style="justify-content: {m.role === 'user' ? 'flex-end' : 'flex-start'};"
         >
           <div class="bubble {m.role}">
-            {m.content}
+            {#if m.role === 'assistant' && m.html}
+              {@html m.html}
+            {:else}
+              {m.content}  <!-- user -->
+            {/if}
           </div>
         </div>
       {/each}

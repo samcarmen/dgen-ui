@@ -56,6 +56,7 @@
   let permission = $state();
   let showNotificationHelp = $state(false);
   let showClearConfirm = $state(false)
+  let isExporting = $state(false);
 
   onMount(async () => {
     if (!browser) return;
@@ -117,6 +118,9 @@
   }
 
   async function exportLogs() {
+    if (isExporting) return;   // prevent double clicks
+    isExporting = true;
+
     try {
       const logs = await getLogs();
       if (!logs || logs.length === 0) {
@@ -143,6 +147,8 @@
     } catch (err) {
       console.error("Export failed:", err);
       fail("Failed to export logs");
+    } finally {
+      isExporting = false;
     }
   }
 
@@ -415,15 +421,22 @@
       </div>
 
       <div class="flex gap-3 items-center">
-        <!-- Export Logs (primary, large) -->
+        <!-- Export Logs -->
         <button
           type="button"
           class="flex-1 p-4 rounded-xl border-2 transition-all duration-300 border-blue-500/40 bg-blue-500/20 hover:border-blue-400"
           onclick={exportLogs}
+          disabled={isExporting}
         >
           <div class="flex items-center justify-center gap-2">
             <iconify-icon icon="ph:export-bold" class="text-blue-300" width="24"></iconify-icon>
-            <span class="font-semibold">Export Logs</span>
+            <span class="font-semibold">
+              {#if isExporting}
+                Exporting…
+              {:else}
+                Export Logs
+              {/if}
+            </span>
           </div>
         </button>
 

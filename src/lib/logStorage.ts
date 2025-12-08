@@ -73,6 +73,7 @@ async function flushPendingLines(): Promise<void> {
     }
   } catch (err) {
     console.error('[logStorage] Failed to flush logs batch:', err);
+    pendingLines = [...batch, ...pendingLines];
   } finally {
     isFlushing = false;
 
@@ -115,6 +116,8 @@ export async function appendLog(line: string): Promise<void> {
 
 
 async function enforceRetention(): Promise<void> {
+  if (!isBrowser()) return;
+
   const db = await getDB();
   const count = await db.count(STORE_NAME);
 

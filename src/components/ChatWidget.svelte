@@ -171,7 +171,12 @@
         throw new Error(`HTTP_${res.status}: ${body}`);
       }
 
-      const data = await res.json();
+      let data: any;
+      try {
+        data = await res.json();
+      } catch (parseErr) {
+        throw new Error("INVALID_JSON");
+      }
 
       if (data.session_id) {
         const newSid = data.session_id;
@@ -193,28 +198,40 @@
       };
       messages = [...messages, assistantMessage];
     } catch (err) {
-      console.error(err);
+        console.error(err);
 
-      if (err instanceof Error && err.name === 'AbortError') {
-        console.log('[DGENChat] Request aborted');
-        return;
-      }
+        if (err instanceof Error && err.name === "AbortError") {
+          console.log("[DGENChat] Request aborted");
+          return;
+        }
+        
+        // TODO: To finalize the fallback response
+        let message = "Something unexpected went wrong. Please try again later.";
 
-      if (err instanceof TypeError) {
-        error = "Network error - please check your connection and try again.";
-      } else if (err instanceof Error && err.message.startsWith("HTTP_5")) {
-        error =
-          "Our server had a problem processing your request. Please try again in a moment.";
-      } else if (err instanceof Error && err.message.startsWith("HTTP_4")) {
-        error =
-          "There was a problem with this request. Please double-check and try again.";
-      } else {
-        error = "Something unexpected went wrong. Please try again.";
+        // Invalid JSON from res.json()
+        if (err instanceof Error && err.message === "INVALID_JSON") {
+          message = "Unexpected response from the server. Please try again later.";
+        }
+        // Network-level failure (no response)
+        else if (err instanceof TypeError) {
+          message = "Network error - please check your connection and try again.";
+        }
+        // 5xx server errors
+        else if (err instanceof Error && err.message.startsWith("HTTP_5")) {
+          message =
+            "Our server had a problem processing your request. Please try again in a moment.";
+        }
+        // 4xx client errors
+        else if (err instanceof Error && err.message.startsWith("HTTP_4")) {
+          message =
+            "There was a problem with this request. Please double-check and try again.";
+        }
+
+        error = message;
+      } finally {
+        isSending = false;
+        abortController = null;
       }
-    } finally {
-      isSending = false;
-      abortController = null;
-    }
   }
 
   function handleKeyDown(e: KeyboardEvent) {

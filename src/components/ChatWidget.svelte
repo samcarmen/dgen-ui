@@ -2,6 +2,7 @@
   import { onMount } from 'svelte';
   import { renderSafeMarkdown } from "$lib/safeMarkdown";
 
+  // Types
   type ChatRole = "user" | "assistant";
 
   interface ChatMessage {
@@ -12,6 +13,7 @@
     html?: string;
   }
 
+  // Props
   interface Props {
     apiBase: string;
     orgId: string;
@@ -33,6 +35,8 @@
   let isReady = $state(false);
   let isSending = $state(false);
   let error = $state<string | null>(null);
+
+  // Refs
   let bottomRef: HTMLDivElement;
   let textareaRef: HTMLTextAreaElement;
   let abortController: AbortController | null = null;
@@ -55,67 +59,7 @@
     ).join('');
   }
 
-  // Initialize session and messages
-  onMount(() => {
-    if (typeof window === "undefined") return;
-
-    const sKey = sessionKeyFor(orgId, userId);
-    const mKey = messagesKeyFor(orgId, userId);
-
-    let sid = window.sessionStorage.getItem(sKey);
-    if (!sid) {
-      sid = generateSessionId();
-      window.sessionStorage.setItem(sKey, sid);
-    }
-    sessionId = sid;
-
-    const savedMessages = window.sessionStorage.getItem(mKey);
-    if (savedMessages) {
-      try {
-        const parsed: ChatMessage[] = JSON.parse(savedMessages);
-        messages = parsed;
-      } catch (e) {
-        console.warn("[DGENChat] Failed to parse stored messages", e);
-      }
-    }
-
-    isReady = true;
-
-    window.addEventListener("keydown", handleGlobalKeydown);
-
-    return () => {
-      window.removeEventListener("keydown", handleGlobalKeydown);
-      
-      // Abort any in-flight requests on unmount
-      if (abortController) {
-        abortController.abort();
-      }
-    };
-  });
-
-  // Persist messages to sessionStorage whenever they change
-  $effect(() => {
-    if (typeof window === "undefined") return;
-    if (!sessionId) return;
-
-    const mKey = messagesKeyFor(orgId, userId);
-    window.sessionStorage.setItem(mKey, JSON.stringify(messages));
-  });
-
-  // Auto-scroll to bottom
-  $effect(() => {
-    if (messages.length > 0 || isOpen) {
-      bottomRef?.scrollIntoView({ behavior: "smooth" });
-    }
-  });
-
-  // Focus Handling
-  $effect(() => {
-    if (isOpen && textareaRef) {
-      textareaRef.focus();
-    }
-  });
-
+  // UI helpers
   function toggleOpen() {
     isOpen = !isOpen;
   }
@@ -129,7 +73,7 @@
   async function sendMessage() {
     if (!isReady) return;
   
-    // Cooldown
+    // Enforce a cooldown period to prevent message spamming
     const now = Date.now();
     if (now - lastSendTime < SEND_COOLDOWN_MS) {
       return;
@@ -138,6 +82,11 @@
 
     const text = input.trim();
     if (!text || !sessionId || isSending) return;
+    // Enforce length guard even if UI is bypassed
+    if (text.length > MAX_MESSAGE_LENGTH) {
+      error = `Messages are limited to ${MAX_MESSAGE_LENGTH} characters. Please shorten your message.`;
+      return;
+    }
 
     error = null;
     isSending = true;
@@ -255,6 +204,71 @@
     target.style.height = "auto";
     target.style.height = `${target.scrollHeight}px`;
   }
+
+  // Lifecycle - Initialize session and messages
+  onMount(() => {
+    if (typeof window === "undefined") return;
+
+    const sKey = sessionKeyFor(orgId, userId);
+    const mKey = messagesKeyFor(orgId, userId);
+
+    let sid = window.sessionStorage.getItem(sKey);
+    if (!sid) {
+      sid = generateSessionId();
+      window.sessionStorage.setItem(sKey, sid);
+    }
+    sessionId = sid;
+
+    const savedMessages = window.sessionStorage.getItem(mKey);
+    if (savedMessages) {
+      try {
+        const parsed: ChatMessage[] = JSON.parse(savedMessages);
+        messages = parsed;
+      } catch (e) {
+        console.warn("[DGENChat] Failed to parse stored messages", e);
+        // Clear corrupted state so future writes succeed and surface the issue to the user
+        window.sessionStorage.removeItem(mKey);
+        error =
+          "We had to reset your chat history because it became unreadable. You can continue chatting normally.";
+      }
+    }
+
+    isReady = true;
+
+    window.addEventListener("keydown", handleGlobalKeydown);
+
+    return () => {
+      window.removeEventListener("keydown", handleGlobalKeydown);
+      
+      // Abort any in-flight requests on unmount
+      if (abortController) {
+        abortController.abort();
+      }
+    };
+  });
+
+  // Persist messages to sessionStorage whenever they change
+  $effect(() => {
+    if (typeof window === "undefined") return;
+    if (!sessionId) return;
+
+    const mKey = messagesKeyFor(orgId, userId);
+    window.sessionStorage.setItem(mKey, JSON.stringify(messages));
+  });
+
+  // Auto-scroll to bottom
+  $effect(() => {
+    if (messages.length > 0 || isOpen) {
+      bottomRef?.scrollIntoView({ behavior: "smooth" });
+    }
+  });
+
+  // Focus Handling
+  $effect(() => {
+    if (isOpen && textareaRef) {
+      textareaRef.focus();
+    }
+  });
 </script>
 
 <!-- Floating button -->
@@ -367,6 +381,8 @@
 
     --widget-container-width: 320px;
     --widget-container-height: 500px;
+    --widget-container-mobile-gap: 24px;
+    --widget-container-mobile-height: 65vh;
 
     --widget-bg: #111827;
     --widget-bg-assistant: #1f2937;
@@ -518,13 +534,16 @@
     cursor: not-allowed;
   }
 
-  @media (max-width: 480px) {
+  @media (max-width: 600px) {
     .widget-container {
-      right: 12px;
-      left: 12px;
-      width: auto;
+      left: var(--widget-container-mobile-gap);
+      right: var(--widget-container-mobile-gap);
+      width: calc(
+        100% - (var(--widget-container-mobile-gap) * 2)
+      );
       max-width: 100%;
-      height: 60vh;
+      height: var(--widget-container-mobile-height);
+      bottom: calc(16px + var(--widget-floating-size) + 8px);
     }
 
     .floating-button {

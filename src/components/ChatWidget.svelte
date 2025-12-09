@@ -35,6 +35,7 @@
   let error = $state<string | null>(null);
   let bottomRef: HTMLDivElement;
   let textareaRef: HTMLTextAreaElement;
+  let abortController: AbortController | null = null;
 
   // Helpers for storage keys
   const buildKey = (suffix: string, orgId: string, userId?: string) =>
@@ -78,15 +79,17 @@
       }
     }
 
-    // Mark ready after brief delay
-    setTimeout(() => {
-      isReady = true;
-    }, 200);
+    isReady = true;
 
     window.addEventListener("keydown", handleGlobalKeydown);
 
     return () => {
       window.removeEventListener("keydown", handleGlobalKeydown);
+      
+      // Abort any in-flight requests on unmount
+      if (abortController) {
+        abortController.abort();
+      }
     };
   });
 
@@ -148,11 +151,13 @@
 
     messages = [...messages, userMessage];
     input = "";
+    abortController = new AbortController();
 
     try {
       const res = await fetch(`${apiBase}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        signal: abortController.signal,
         body: JSON.stringify({
           session_id: sessionId,
           message: text,
@@ -184,11 +189,16 @@
         role: "assistant",
         content: answer,
         createdAt: Date.now(),
-        html: renderSafeMarkdown(answer),
+        html: await renderSafeMarkdown(answer),
       };
       messages = [...messages, assistantMessage];
     } catch (err) {
       console.error(err);
+
+      if (err instanceof Error && err.name === 'AbortError') {
+        console.log('[DGENChat] Request aborted');
+        return;
+      }
 
       if (err instanceof TypeError) {
         error = "Network error - please check your connection and try again.";
@@ -203,6 +213,7 @@
       }
     } finally {
       isSending = false;
+      abortController = null;
     }
   }
 

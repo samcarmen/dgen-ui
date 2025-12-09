@@ -8,11 +8,13 @@ marked.setOptions({
 });
 
 // Convert markdown to sanitized HTML.
-export function renderSafeMarkdown(markdown: string): string {
+export async function renderSafeMarkdown(markdown: string): Promise<string> {
     if (!browser) return markdown;
-    const rawHtml = marked.parse(markdown) as string;
+
+    const rawHtml = await marked.parse(markdown); // safe future-proof
     const cleanHtml = DOMPurify.sanitize(rawHtml, {
         USE_PROFILES: { html: true },
     });
+
     return cleanHtml;
 }

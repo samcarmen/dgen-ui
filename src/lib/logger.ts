@@ -18,6 +18,22 @@ const PERSIST_LEVELS_PROD: LogLevel[] = [
   LogLevel.LOG,
 ];
 
+// Basic scrubbing for commonly leaked secrets before persistence/export.
+// NOTE TO DEVELOPERS: avoid logging secrets (mnemonics, private keys, auth tokens,
+// raw wallet data). This scrubber is best-effort only; do not rely on it as a security boundary.
+// Server-side validation and redaction must remain the primary defense.
+const mnemonicPattern =
+  /\b(?:[a-z]{3,}\s+){11,}[a-z]{3,}\b/gi; // 12+ space-separated lowercase words
+const hexKeyPattern = /\b[0-9a-fA-F]{32,}\b/g; // long hex strings (keys, hashes)
+const base64Pattern = /\b[A-Za-z0-9+/]{32,}={0,2}\b/g; // long base64-ish blobs
+
+function scrubSensitive(line: string): string {
+  return line
+    .replace(mnemonicPattern, '[SCRUBBED_MNEMONIC]')
+    .replace(hexKeyPattern, '[SCRUBBED_HEX]')
+    .replace(base64Pattern, '[SCRUBBED_B64]');
+}
+
 function shouldPersist(level: LogLevel): boolean {
   if (import.meta.env.PROD) {
     return PERSIST_LEVELS_PROD.includes(level);
@@ -53,7 +69,7 @@ class BreezLogger {
 
     // Persist Breez log
     if (shouldPersist(level)) {
-      void appendLog(`${prefix}: ${entry.line}`);
+      void appendLog(scrubSensitive(`${prefix}: ${entry.line}`));
     }
   };
 }
@@ -77,7 +93,7 @@ export class Logger {
     if (!shouldPersist(level)) return;
 
     const [prefix, ...rest] = this.format(level, ...args);
-    const line = `${prefix}: ${rest
+    const line = scrubSensitive(`${prefix}: ${rest
       .map((arg) => {
         try {
           if (typeof arg === 'object' && arg !== null) {
@@ -92,7 +108,7 @@ export class Logger {
           return `[unserializable ${type}]`;
         }
       })
-      .join(' ')}`;
+      .join(' ')}`);
 
     void appendLog(line);
   }

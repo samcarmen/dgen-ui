@@ -31,11 +31,18 @@
   const MAX_MESSAGE_LENGTH = 1000;
   const SEND_COOLDOWN_MS = 300;
   const REQUEST_TIMEOUT_MS = 60000;
+  // The first request after idle may hit an Agent Engine cold start, which can
+  // take noticeably longer than a warm query — give it a larger budget so we
+  // don't abort a response that is genuinely on its way.
+  const FIRST_REQUEST_TIMEOUT_MS = 120000;
   const REASSURE_DELAY_MS = 30000; // switch label after 30s to reassure the user
   const MAX_MESSAGES_STORED = 200;
   const LABEL_THINKING = "Thinking…";
   const LABEL_REASSURE = "Still thinking, please wait…";
   let lastSendTime = 0;
+  // Once any request has completed, later requests hit a warm backend and use
+  // the shorter timeout. Also gates the single automatic cold-start retry.
+  let hasCompletedRequest = false;
 
   // State
   let isOpen = $state(false);
@@ -213,6 +220,21 @@
     }
   }
 
+  // Transient failures worth a single automatic retry: a timeout/abort (likely
+  // a cold start), a 5xx, or a network error. Auth (401/403), client (4xx), and
+  // unmount errors are not retried — they won't succeed on a second attempt.
+  function isRetryable(err: unknown): boolean {
+    if (err instanceof TypeError) return true; // network error
+    if (!(err instanceof Error)) return false;
+    if (err.message === "UNMOUNT" || err.message === "AUTH_EXPIRED")
+      return false;
+    return (
+      err.name === "AbortError" ||
+      err.message === "TIMEOUT" ||
+      err.message.startsWith("HTTP_5")
+    );
+  }
+
   async function sendMessage() {
     if (!isReady) return;
     if (!disclaimerAgreed) {
@@ -257,7 +279,23 @@
     }, REASSURE_DELAY_MS);
 
     try {
-      const assistantMessage = await doFetch(text, REQUEST_TIMEOUT_MS);
+      // First request may hit a cold start: use a longer timeout, and on a
+      // transient failure retry once — the first attempt warms the backend, so
+      // the retry (against a now-warm engine) almost always succeeds.
+      const firstAttemptTimeout = hasCompletedRequest
+        ? REQUEST_TIMEOUT_MS
+        : FIRST_REQUEST_TIMEOUT_MS;
+
+      let assistantMessage: ChatMessage;
+      try {
+        assistantMessage = await doFetch(text, firstAttemptTimeout);
+      } catch (err) {
+        if (!mounted) return;
+        if (!isRetryable(err)) throw err;
+        assistantMessage = await doFetch(text, REQUEST_TIMEOUT_MS);
+      }
+
+      hasCompletedRequest = true;
       if (!mounted) return;
       appendMessage(assistantMessage);
     } catch (err) {
@@ -340,8 +378,9 @@
       isApiBaseValid = false;
     }
 
-    // Warm-up ping: fire a GET to wake the Cloud Run instance while the user
-    // reads the disclaimer and types their first message. Errors are ignored.
+    // Warm-up ping: fire a GET so the backend pre-initializes the Vertex client
+    // and Agent Engine handle while the user reads the disclaimer and types
+    // their first message, shrinking first-request latency. Errors are ignored.
     if (isApiBaseValid) {
       fetch(apiBase, {
         method: "GET",
